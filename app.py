@@ -179,9 +179,49 @@ def force_kill_all_collectors() -> None:
         except:
             pass
 
-st.set_page_config(page_title="Tarkov Trader Profit", layout="wide")
+st.set_page_config(
+    page_title="Tarkov Trader Profit", 
+    layout="wide",
+    page_icon="💰",
+    initial_sidebar_state="expanded"
+)
 
-st.title("Tarkov Trader Profit Dashboard (RUB)")
+# Custom CSS for better aesthetics
+st.markdown("""
+<style>
+    .stMetric {
+        background-color: #1E1E1E;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #333;
+    }
+    .stDataFrame {
+        border: 1px solid #333;
+        border-radius: 5px;
+    }
+    h1, h2, h3 {
+        color: #f0f2f6;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #0E1117;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #262730;
+        border-bottom: 2px solid #4CAF50;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("💰 Tarkov Trader Profit Dashboard")
 
 # --- Data Loading ---
 @st.cache_data(ttl=10) # Cache data for 10 seconds to prevent DB spam
@@ -392,15 +432,21 @@ def render_header_metrics():
 
     # --- KPI Metrics ---
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Opportunities", len(filtered_df))
+    
+    # Calculate market health (percentage of profitable items)
+    profitable_count = len(filtered_df[filtered_df['profit'] > 0])
+    market_health = (profitable_count / len(filtered_df)) * 100 if len(filtered_df) > 0 else 0
+    
+    col1.metric("Total Opportunities", len(filtered_df), help="Total items matching your filters")
     
     if len(filtered_df) < 5 and not show_locked and min_profit >= 0:
         st.info("Tip: Few items found? Try enabling 'Show Locked Items' or lowering 'Min Profit' to see more opportunities.")
 
     if not filtered_df.empty:
-        col2.metric("Max Profit", f"{filtered_df['profit'].max():,.0f} ₽")
-        col3.metric("Avg ROI", f"{filtered_df['roi'].mean():.1f}%")
-        col4.metric("Best Item", filtered_df.sort_values('profit', ascending=False).iloc[0]['name'])
+        best_item = filtered_df.sort_values('profit', ascending=False).iloc[0]
+        col2.metric("Max Profit", f"{best_item['profit']:,.0f} ₽", delta="Top Item")
+        col3.metric("Avg ROI", f"{filtered_df['roi'].mean():.1f}%", help="Average Return on Investment")
+        col4.metric("Market Health", f"{market_health:.1f}%", help="% of items that are profitable")
 
     # --- Recommendation Engine ---
     st.markdown("### 🏆 Daily Top 10 Recommendations")
@@ -595,7 +641,9 @@ def render_visual_analysis():
                     size='plot_size',
                     hover_data=['name', 'roi', 'profit_per_slot', 'discount_percent', 'avg_24h_price', 'change_last_48h', 'volatility'],
                     title='Risk vs Reward: Profit vs Volatility (7 Days)',
-                    labels={'volatility': 'Volatility (Risk)', 'profit': 'Profit (Reward)'}
+                    labels={'volatility': 'Volatility (Risk)', 'profit': 'Profit (Reward)'},
+                    color_discrete_sequence=px.colors.qualitative.Bold,
+                    template="plotly_dark"
                 )
                 fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Break Even")
                 st.plotly_chart(fig, use_container_width=True)
@@ -610,7 +658,8 @@ def render_visual_analysis():
                             values='profit',
                             color='volatility',
                             color_continuous_scale='RdYlGn_r',
-                            title='Profit Opportunities by Category (Color = Risk/Volatility)'
+                            title='Profit Opportunities by Category (Color = Risk/Volatility)',
+                            template="plotly_dark"
                         )
                         st.plotly_chart(fig_tree, use_container_width=True)
             
@@ -666,7 +715,8 @@ def render_visual_analysis():
                     text_auto=True,
                     aspect="auto",
                     color_continuous_scale='RdBu_r',
-                    title="Correlation Heatmap"
+                    title="Correlation Heatmap",
+                    template="plotly_dark"
                 )
                 st.plotly_chart(fig_corr, use_container_width=True)
 
@@ -686,7 +736,8 @@ def render_visual_analysis():
                     y="profit", 
                     color="category",
                     title="Profit Spread per Category (Outliers Removed)",
-                    labels={'profit': 'Profit (RUB)', 'category': ''}
+                    labels={'profit': 'Profit (RUB)', 'category': ''},
+                    template="plotly_dark"
                 )
                 fig_box.update_layout(showlegend=False)
                 st.plotly_chart(fig_box, use_container_width=True)
@@ -699,7 +750,8 @@ def render_visual_analysis():
                 nbins=50, 
                 title="Distribution of Profit Margins",
                 labels={'profit': 'Profit (RUB)'},
-                color_discrete_sequence=['#3366cc']
+                color_discrete_sequence=['#3366cc'],
+                template="plotly_dark"
             )
             fig_hist.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Break Even")
             st.plotly_chart(fig_hist, use_container_width=True)
@@ -715,7 +767,8 @@ def render_visual_analysis():
                 color='roi',
                 title='Average Profit by Category (Color = Avg ROI)',
                 labels={'profit': 'Avg Profit (RUB)', 'roi': 'Avg ROI (%)'},
-                color_continuous_scale='Viridis'
+                color_continuous_scale='Viridis',
+                template="plotly_dark"
             )
             st.plotly_chart(fig_cat, use_container_width=True)
         except Exception as e:
@@ -754,9 +807,20 @@ def render_item_history():
                     m3.metric("Lowest Price", f"{hist_df['flea_price'].min():,.0f} ₽")
 
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['profit'], mode='lines+markers', name='Profit'))
-                    fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['flea_price'], mode='lines', name='Flea Price', line=dict(dash='dash')))
-                    fig.update_layout(title=f"Profit History: {selected_item_name}", xaxis_title="Time", yaxis_title="RUB")
+                    fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['profit'], mode='lines+markers', name='Profit', line=dict(color='#4CAF50', width=2)))
+                    fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['flea_price'], mode='lines', name='Flea Price', line=dict(dash='dash', color='#FF5252')))
+                    
+                    fig.update_layout(
+                        title=f"Profit History: {selected_item_name}", 
+                        xaxis_title="Time", 
+                        yaxis_title="RUB",
+                        template="plotly_dark",
+                        hovermode="x unified",
+                        xaxis=dict(
+                            rangeslider=dict(visible=True),
+                            type="date"
+                        )
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("No history available for this item.")
