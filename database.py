@@ -243,7 +243,7 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
         FROM prices
         WHERE timestamp > ?
         GROUP BY item_id
-    ''', (time_threshold,))
+    ''', (time_threshold.isoformat(),))
     
     rows = c.fetchall()
     conn.close()
@@ -270,7 +270,7 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     cutoff_date = datetime.now() - timedelta(days=days)
-    c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date,))
+    c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date.isoformat(),))
     deleted_count = c.rowcount
     conn.commit()
     

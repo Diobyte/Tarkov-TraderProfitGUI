@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import database
 import utils
+import config
 import time
 import subprocess
 import os
@@ -17,39 +18,7 @@ import psutil
 from typing import Tuple, Optional, Any
 
 # --- Configuration ---
-# Flea Market Level Requirements (Based on Patch 0.15+ changes)
-
-CATEGORY_LOCKS = {
-    "Sniper rifle": 20,
-    "Assault rifle": 25,
-    "Assault carbine": 25,
-    "Marksman rifle": 25,
-    "Backpack": 25,
-    "Foregrip": 20,
-    "Comb. tact. device": 25,
-    "Flashlight": 25,
-    "Auxiliary Mod": 25,
-    "Comb. muzzle device": 20,
-    "Flashhider": 20,
-    "Silencer": 20,
-    "Building material": 30,
-    "Electronics": 30,
-    "Household goods": 30,
-    "Jewelry": 30,
-    "Tool": 30,
-    "Battery": 30,
-    "Lubricant": 30,
-    "Medical supplies": 30,
-    "Fuel": 30,
-    "Drug": 30, 
-    "Info": 30, 
-}
-
-ITEM_LOCKS = {
-    "PS12B": 40,
-    "M80": 35,
-    "Blackout CJB": 40,
-}
+# Loaded from config.py
 
 # Configure Logging for the Streamlit App
 logging.basicConfig(
@@ -75,9 +44,16 @@ def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
             
             if psutil.pid_exists(pid):
                 p = psutil.Process(pid)
-                # Verify it's actually python
-                if "python" in p.name().lower() or "collector" in p.name().lower():
-                    return True, pid, "standalone"
+                # Verify it's actually python and running collector.py
+                # Check command line arguments for robustness
+                try:
+                    cmdline = p.cmdline()
+                    if any("collector.py" in arg for arg in cmdline):
+                        return True, pid, "standalone"
+                except (psutil.AccessDenied, psutil.ZombieProcess):
+                    # Fallback to name check if access denied
+                    if "python" in p.name().lower() or "collector" in p.name().lower():
+                        return True, pid, "standalone"
         except (OSError, ValueError, psutil.NoSuchProcess):
             pass # Fall through to check normal PID
 
@@ -88,8 +64,13 @@ def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
             
             if psutil.pid_exists(pid):
                 p = psutil.Process(pid)
-                if "python" in p.name().lower() or "collector" in p.name().lower():
-                    return True, pid, "session"
+                try:
+                    cmdline = p.cmdline()
+                    if any("collector.py" in arg for arg in cmdline):
+                        return True, pid, "session"
+                except (psutil.AccessDenied, psutil.ZombieProcess):
+                    if "python" in p.name().lower() or "collector" in p.name().lower():
+                        return True, pid, "session"
         except (OSError, ValueError, psutil.NoSuchProcess):
             # Process dead or file corrupt
             return False, None, None
@@ -145,14 +126,22 @@ def stop_collector() -> None:
             return
 
         try:
-            os.kill(pid, signal.SIGTERM) # Try graceful termination
+            # Use psutil for cross-platform termination reliability
+            proc = psutil.Process(pid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                proc.kill()
             logging.info(f"Stopped collector with PID {pid}")
-        except OSError as e:
+        except (psutil.NoSuchProcess, psutil.Error, OSError) as e:
             logging.error(f"Error stopping collector: {e}")
-            pass
         # Clean up PID file
         if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
 
 def force_kill_all_collectors() -> None:
     # 1. Try standard stop first
@@ -354,7 +343,7 @@ def render_sidebar_status():
 
 render_sidebar_status()
 
-def get_filtered_data():
+def get_filtered_data() -> pd.DataFrame:
     try:
         df = load_data(trend_hours=trend_window_hours)
     except Exception as e:
@@ -397,14 +386,14 @@ def get_filtered_data():
             category = row['category']
             
             # Check specific item overrides first
-            for restricted_item, level_req in ITEM_LOCKS.items():
+            for restricted_item, level_req in config.ITEM_LOCKS.items():
                 if restricted_item in name:
                     if player_level < level_req:
                         return False
             
             # Check Category
-            if category in CATEGORY_LOCKS:
-                if player_level < CATEGORY_LOCKS[category]:
+            if category in config.CATEGORY_LOCKS:
+                if player_level < config.CATEGORY_LOCKS[category]:
                     return False
                     
             return True
@@ -556,12 +545,8 @@ def render_visual_analysis():
         if df.empty:
             df = filtered_df
         else:
-            # Recalculate metrics for full df
-            df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
-            df['slots'] = df['width'] * df['height']
-            df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
-            df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
-            df['discount_percent'] = df.apply(lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, axis=1)
+            # Use shared utility for consistency
+            df = utils.calculate_metrics(df)
     except:
         df = filtered_df
 

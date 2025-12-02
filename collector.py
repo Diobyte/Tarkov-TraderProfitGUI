@@ -12,10 +12,10 @@ import argparse
 import os
 from typing import Optional, Dict, Any
 
+import config
+
 # Configuration
-COLLECTION_INTERVAL_MINUTES = 5
-DATA_RETENTION_DAYS = 7
-API_URL = 'https://api.tarkov.dev/graphql'
+# Loaded from config.py
 
 # Configure Logging
 logging.basicConfig(
@@ -50,12 +50,16 @@ def get_session() -> requests.Session:
     session.mount('https://', adapter)
     return session
 
-def run_query(query: str) -> Optional[Dict[str, Any]]:
+def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     headers = {"Content-Type": "application/json"}
     session = get_session()
     try:
+        payload: Dict[str, Any] = {'query': query}
+        if variables:
+            payload['variables'] = variables
+            
         # Added timeout to prevent hanging indefinitely
-        response = session.post(API_URL, headers=headers, json={'query': query}, timeout=60)
+        response = session.post(config.API_URL, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             try:
                 return response.json()
@@ -66,7 +70,7 @@ def run_query(query: str) -> Optional[Dict[str, Any]]:
             logging.error(f"Query failed with code {response.status_code}")
             return None
     except requests.Timeout:
-        logging.error("API request timed out after 60 seconds.")
+        logging.error("API request timed out after 30 seconds.")
         return None
     except requests.ConnectionError:
         logging.error("API connection error. Check your internet connection.")
@@ -78,9 +82,10 @@ def run_query(query: str) -> Optional[Dict[str, Any]]:
 def fetch_and_store_data() -> None:
     start_time = time.time()
     logging.info("Fetching data...")
+    
     query = """
-    {
-        items(lang: en) {
+    query GetItems($offset: Int, $limit: Int) {
+        items(lang: en, offset: $offset, limit: $limit) {
             id
             name
             width
@@ -109,18 +114,38 @@ def fetch_and_store_data() -> None:
     }
     """
     
-    result = run_query(query)
-    if not result or 'data' not in result:
-        logging.warning("No data returned from API.")
-        return
+    all_items = []
+    offset = 0
+    limit = 1000
+    
+    while True:
+        logging.info(f"Fetching items offset={offset} limit={limit}...")
+        result = run_query(query, variables={"offset": offset, "limit": limit})
+        
+        if not result or 'data' not in result or 'items' not in result['data']:
+            logging.warning("No data returned from API or error occurred.")
+            break
 
-    items = result['data']['items']
-    logging.info(f"Fetched {len(items)} items from API. Processing...")
+        items = result['data']['items']
+        if not items:
+            break
+            
+        all_items.extend(items)
+        
+        if len(items) < limit:
+            # Less items than limit means we reached the end
+            break
+            
+        offset += limit
+        # Be nice to the API
+        time.sleep(0.5)
+
+    logging.info(f"Fetched total {len(all_items)} items from API. Processing...")
     
     batch_data = []
     current_time = datetime.now()
     
-    for item in items:
+    for item in all_items:
         # Filter out items explicitly marked as noFlea
         types = item.get('types', [])
         if 'noFlea' in types:
@@ -183,7 +208,7 @@ def cleanup_job() -> None:
         # Retention set to manage DB size
         # Increase this if you need more historical data for ML, but be aware of DB size
         # We do NOT vacuum automatically here to prevent locking the DB for too long during collection cycles
-        deleted = database.cleanup_old_data(days=DATA_RETENTION_DAYS, vacuum=False) 
+        deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False) 
         if deleted is not None and deleted > 0:
             logging.info(f"Cleaned up {deleted} old records.")
     except Exception as e:
@@ -195,7 +220,7 @@ def job() -> None:
     except Exception as e:
         logging.error(f"Job failed: {e}")
 
-import argparse
+# duplicate import removed
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -218,16 +243,16 @@ if __name__ == "__main__":
         
         if last_run:
             time_since_last = datetime.now() - last_run
-            if time_since_last < timedelta(minutes=COLLECTION_INTERVAL_MINUTES):
+            if time_since_last < timedelta(minutes=config.COLLECTION_INTERVAL_MINUTES):
                 should_run_immediately = False
-                logging.info(f"Last run was {time_since_last} ago. Skipping immediate run to respect {COLLECTION_INTERVAL_MINUTES}-minute rate limit.")
+                logging.info(f"Last run was {time_since_last} ago. Skipping immediate run to respect {config.COLLECTION_INTERVAL_MINUTES}-minute rate limit.")
         
         if should_run_immediately:
             job()
             
         cleanup_job() # Run cleanup on startup
         
-        schedule.every(COLLECTION_INTERVAL_MINUTES).minutes.do(job)
+        schedule.every(config.COLLECTION_INTERVAL_MINUTES).minutes.do(job)
         schedule.every(24).hours.do(cleanup_job) # Run cleanup daily
         
         while True:
