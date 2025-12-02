@@ -146,19 +146,23 @@ def fetch_and_store_data() -> None:
         best_trader_price = 0
         best_trader_name = None
         
-        for sell_offer in item['sellFor']:
-            if sell_offer['currency'] == 'RUB' and sell_offer['source'] != 'fleaMarket':
-                if sell_offer['price'] > best_trader_price:
-                    best_trader_price = sell_offer['price']
-                    best_trader_name = sell_offer['source']
+        sell_offers = item.get('sellFor') or []
+        for sell_offer in sell_offers:
+            if sell_offer.get('currency') == 'RUB' and sell_offer.get('source') != 'fleaMarket':
+                price = sell_offer.get('price', 0)
+                if price > best_trader_price:
+                    best_trader_price = price
+                    best_trader_name = sell_offer.get('source')
         
         # Find best Flea Buy Price (We buy from Flea)
         best_flea_price = float('inf')
         
-        for buy_offer in item['buyFor']:
-            if buy_offer['currency'] == 'RUB' and buy_offer['source'] == 'fleaMarket':
-                if buy_offer['price'] < best_flea_price:
-                    best_flea_price = buy_offer['price']
+        buy_offers = item.get('buyFor') or []
+        for buy_offer in buy_offers:
+            if buy_offer.get('currency') == 'RUB' and buy_offer.get('source') == 'fleaMarket':
+                price = buy_offer.get('price', 0)
+                if price < best_flea_price:
+                    best_flea_price = price
         
         # If we found valid prices for both
         if best_trader_price > 0 and best_flea_price != float('inf'):

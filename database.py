@@ -1,13 +1,40 @@
 import sqlite3
 import os
 import time
+import logging
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Optional, Any, Callable
+from functools import wraps
 
 # Ensure DB is always created in the same directory as this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, 'tarkov_data.db')
 
+def retry_db_op(max_retries: int = 5, delay: float = 1.0):
+    """
+    Decorator to retry database operations when locked.
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        if attempt < max_retries - 1:
+                            time.sleep(delay)
+                            continue
+                    logging.error(f"Database error in {func.__name__}: {e}")
+                    raise e
+                except Exception as e:
+                    logging.error(f"Unexpected error in {func.__name__}: {e}")
+                    raise e
+            return None # Should not be reached if raise e is working
+        return wrapper
+    return decorator
+
+@retry_db_op()
 def init_db() -> None:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     # Enable WAL mode for better concurrency
@@ -69,6 +96,7 @@ def init_db() -> None:
     conn.commit()
     conn.close()
 
+@retry_db_op()
 def save_prices_batch(items: List[Tuple]) -> None:
     """
     Saves a list of items in a single transaction.
@@ -77,37 +105,31 @@ def save_prices_batch(items: List[Tuple]) -> None:
     if not items:
         return
         
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            conn = sqlite3.connect(DB_NAME, timeout=30)
-            c = conn.cursor()
-            
-            # Prepare the data for executemany
-            # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
-            
-            c.executemany('''
-                INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', items)
-            
-            conn.commit()
-            conn.close()
-            return
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower() and attempt < max_retries - 1:
-                time.sleep(1)
-                continue
-            raise e
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    c = conn.cursor()
+    
+    # Prepare the data for executemany
+    # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+    
+    c.executemany('''
+        INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', items)
+    
+    conn.commit()
+    conn.close()
 
+@retry_db_op()
 def get_latest_prices() -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     # Get the latest timestamp
     c = conn.cursor()
     c.execute('SELECT MAX(timestamp) FROM prices')
-    latest_time = c.fetchone()[0]
+    result = c.fetchone()
+    latest_time = result[0] if result else None
     
     if not latest_time:
+        conn.close()
         return []
 
     c.execute('''
@@ -120,6 +142,7 @@ def get_latest_prices() -> List[Tuple]:
     conn.close()
     return rows
 
+@retry_db_op()
 def get_item_history(item_id: str) -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -133,6 +156,7 @@ def get_item_history(item_id: str) -> List[Tuple]:
     conn.close()
     return rows
 
+@retry_db_op()
 def get_market_trends(hours: int = 6) -> List[Tuple]:
     """
     Calculates volatility and average profit over the last X hours.
@@ -140,11 +164,6 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
-    
-    # SQLite doesn't have built-in STDDEV, so we approximate or calculate variance manually if needed.
-    # For simplicity in this environment, we'll fetch the data and calculate in Pandas in the app,
-    # OR we can just get Min/Max/Avg here.
-    # Let's get Min, Max, Avg Profit for the time window.
     
     time_threshold = datetime.now() - timedelta(hours=hours)
     
@@ -164,6 +183,7 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     conn.close()
     return rows
 
+@retry_db_op()
 def get_all_prices() -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -175,6 +195,7 @@ def get_all_prices() -> List[Tuple]:
     conn.close()
     return rows
 
+@retry_db_op()
 def cleanup_old_data(days: int = 7) -> int:
     """
     Deletes records older than the specified number of days to keep the DB size manageable.
@@ -185,40 +206,45 @@ def cleanup_old_data(days: int = 7) -> int:
     c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date,))
     deleted_count = c.rowcount
     conn.commit()
-    # Vacuum to reclaim space
-    c.execute('VACUUM')
+    
+    # Only vacuum if we actually deleted something significant to avoid locking
+    if deleted_count > 1000:
+        try:
+            c.execute('VACUUM')
+        except sqlite3.OperationalError:
+            logging.warning("Could not VACUUM database (locked?), skipping.")
+            
     conn.close()
     return deleted_count
 
+@retry_db_op()
 def get_latest_timestamp() -> Optional[datetime]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
-    try:
-        c.execute('SELECT MAX(timestamp) FROM prices')
-        result = c.fetchone()[0]
-        conn.close()
-        if result:
-            # Handle potential format differences
+    c.execute('SELECT MAX(timestamp) FROM prices')
+    result = c.fetchone()
+    conn.close()
+    
+    if result and result[0]:
+        ts_str = result[0]
+        # Handle potential format differences
+        try:
+            return datetime.fromisoformat(ts_str)
+        except ValueError:
+            pass
+        
+        # Try common formats
+        formats = [
+            '%Y-%m-%d %H:%M:%S.%f',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d %H:%M'
+        ]
+        
+        for fmt in formats:
             try:
-                return datetime.fromisoformat(result)
+                return datetime.strptime(ts_str, fmt)
             except ValueError:
-                pass
-            
-            # Try common formats
-            formats = [
-                '%Y-%m-%d %H:%M:%S.%f',
-                '%Y-%m-%d %H:%M:%S',
-                '%Y-%m-%d %H:%M'
-            ]
-            
-            for fmt in formats:
-                try:
-                    return datetime.strptime(result, fmt)
-                except ValueError:
-                    continue
-            
-            return None
+                continue
+        
         return None
-    except Exception:
-        conn.close()
-        return None
+    return None

@@ -120,6 +120,14 @@ def start_collector() -> None:
             stderr=subprocess.STDOUT
         )
         
+        # Wait a moment to see if it crashes immediately
+        time.sleep(2)
+        if proc.poll() is not None:
+            # Process exited immediately
+            st.error(f"Collector failed to start. Check collector_startup.log for details. Return code: {proc.returncode}")
+            logging.error(f"Collector failed to start. Return code: {proc.returncode}")
+            return
+        
         with open(PID_FILE, 'w') as f:
             f.write(str(proc.pid))
         logging.info(f"Started collector with PID {proc.pid}")
@@ -176,50 +184,44 @@ st.title("Tarkov Trader Profit Dashboard (RUB)")
 # --- Data Loading ---
 @st.cache_data(ttl=10) # Cache data for 10 seconds to prevent DB spam
 def load_data(trend_hours: int = 168) -> pd.DataFrame:
-    max_retries = 3
-    for attempt in range(max_retries):
+    try:
+        # 1. Get Latest Snapshot
+        data = database.get_latest_prices()
+        if not data:
+            logging.warning("No data returned from database.")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(data, columns=['item_id', 'name', 'flea_price', 'trader_price', 'trader_name', 'profit', 'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category'])
+        
+        # 2. Get Historical Trends
         try:
-            # 1. Get Latest Snapshot
-            data = database.get_latest_prices()
-            if not data:
-                logging.warning("No data returned from database.")
-                return pd.DataFrame()
-            
-            df = pd.DataFrame(data, columns=['item_id', 'name', 'flea_price', 'trader_price', 'trader_name', 'profit', 'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category'])
-            
-            # 2. Get Historical Trends
-            try:
-                trends = database.get_market_trends(hours=trend_hours)
-                if trends:
-                    trend_df = pd.DataFrame(trends, columns=['item_id', 'trend_avg_profit', 'trend_min_profit', 'trend_max_profit', 'data_points'])
-                    # Merge trends into main dataframe
-                    df = pd.merge(df, trend_df, on='item_id', how='left')
-                    
-                    # Calculate Volatility (Max - Min) as a simple proxy for risk
-                    # Fill NaNs before calculation to avoid issues
-                    df['trend_max_profit'] = df['trend_max_profit'].fillna(df['profit'])
-                    df['trend_min_profit'] = df['trend_min_profit'].fillna(df['profit'])
-                    
-                    df['volatility'] = df['trend_max_profit'] - df['trend_min_profit']
-                    df['volatility'] = df['volatility'].fillna(0)
-                else:
-                    df['volatility'] = 0
-                    df['trend_avg_profit'] = df['profit']
-            except Exception as e:
-                logging.warning(f"Could not load market trends: {e}")
-                st.warning(f"Could not load market trends: {e}")
+            trends = database.get_market_trends(hours=trend_hours)
+            if trends:
+                trend_df = pd.DataFrame(trends, columns=['item_id', 'trend_avg_profit', 'trend_min_profit', 'trend_max_profit', 'data_points'])
+                # Merge trends into main dataframe
+                df = pd.merge(df, trend_df, on='item_id', how='left')
+                
+                # Calculate Volatility (Max - Min) as a simple proxy for risk
+                # Fill NaNs before calculation to avoid issues
+                df['trend_max_profit'] = df['trend_max_profit'].fillna(df['profit'])
+                df['trend_min_profit'] = df['trend_min_profit'].fillna(df['profit'])
+                
+                df['volatility'] = df['trend_max_profit'] - df['trend_min_profit']
+                df['volatility'] = df['volatility'].fillna(0)
+            else:
                 df['volatility'] = 0
                 df['trend_avg_profit'] = df['profit']
-
-            return df
         except Exception as e:
-            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
-                time.sleep(0.5) # Wait a bit before retrying
-                continue
-            logging.error(f"Error loading data from database: {e}")
-            st.error(f"Error loading data from database: {e}")
-            return pd.DataFrame()
-    return pd.DataFrame()
+            logging.warning(f"Could not load market trends: {e}")
+            # Don't show warning to user, just log it and proceed with partial data
+            df['volatility'] = 0
+            df['trend_avg_profit'] = df['profit']
+
+        return df
+    except Exception as e:
+        logging.error(f"Error loading data from database: {e}")
+        st.error(f"Error loading data from database: {e}")
+        return pd.DataFrame()
 
 # --- Sidebar: Collector Control ---
 st.sidebar.header("Data Collector")
