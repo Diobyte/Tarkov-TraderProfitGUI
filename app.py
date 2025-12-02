@@ -576,8 +576,8 @@ def render_visual_analysis():
             col_a, col_b = st.columns(2)
             with col_a:
                 # Interactive Scatter Plot: Profit vs Volatility
-                # Ensure size is positive for Plotly
-                df['plot_size'] = df['profit_per_slot'].clip(lower=10)
+                # Ensure size is positive for Plotly, but reflect magnitude of profit/loss
+                df['plot_size'] = df['profit_per_slot'].abs().clip(lower=10)
 
                 fig = px.scatter(
                     df, 
@@ -585,7 +585,7 @@ def render_visual_analysis():
                     y='profit', 
                     color='cluster_label',
                     size='plot_size',
-                    hover_data=['name', 'roi', 'profit_per_slot', 'discount_percent', 'avg_24h_price', 'change_last_48h'],
+                    hover_data=['name', 'roi', 'profit_per_slot', 'discount_percent', 'avg_24h_price', 'change_last_48h', 'volatility'],
                     title='Risk vs Reward: Profit vs Volatility (7 Days)',
                     labels={'volatility': 'Volatility (Risk)', 'profit': 'Profit (Reward)'}
                 )
@@ -609,7 +609,7 @@ def render_visual_analysis():
             **Strategy Guide (Updated):**
             *   **High Potential (Stable)**: The "Holy Grail". High profit, low volatility. Safe bets.
             *   **High Potential (Volatile)**: High profit, but prices swing wildly. Good for sniping, bad for holding.
-            *   **Volatility**: Measured by the price swing over the last 7 days. Green = Safe, Red = Risky.
+            *   **Volatility**: Calculated as `Max Profit - Min Profit` over the last 7 days. A larger range means higher risk/instability.
             """)
             
             st.markdown("### 📊 Category Performance")
