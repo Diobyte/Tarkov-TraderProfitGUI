@@ -195,11 +195,24 @@ $Process = New-Object System.Diagnostics.Process
 $Process.StartInfo = $ProcessInfo
 
 # Set up event handlers to write to file and console
+$Script:BrowserOpened = $false
 $LogHandler = {
     param($sender, $e)
     if ($e.Data) {
         $e.Data | Out-File -FilePath $StreamlitLog -Append -Encoding utf8
         Write-Host $e.Data
+
+        # Auto-open browser when URL is detected
+        if (-not $Script:BrowserOpened -and $e.Data -match "Local URL:\s+(http://\S+)") {
+            $Script:BrowserOpened = $true
+            $url = $matches[1]
+            Write-Host "[INFO] Opening browser at $url..." -ForegroundColor Green
+            try {
+                Start-Process $url
+            } catch {
+                Write-Host "[WARN] Could not open browser automatically." -ForegroundColor Yellow
+            }
+        }
     }
 }
 
