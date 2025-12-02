@@ -115,6 +115,7 @@ def fetch_and_store_data() -> None:
         return
 
     items = result['data']['items']
+    logging.info(f"Fetched {len(items)} items from API. Processing...")
     
     batch_data = []
     current_time = datetime.now()

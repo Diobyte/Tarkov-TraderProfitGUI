@@ -274,6 +274,10 @@ search_term = st.sidebar.text_input("Search Item Name")
 # Dashboard automatically refreshes every 60 seconds to check for new data
 refresh_interval = 60
 
+if st.sidebar.button("Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
+
 st.sidebar.markdown("---")
 st.sidebar.markdown("### About")
 st.sidebar.caption("Tarkov Trader Profit v1.1")
@@ -501,6 +505,9 @@ def render_visual_analysis():
     except:
         df = filtered_df
 
+    if df.empty:
+        return
+
     st.subheader("Market Analysis (ML Clustering)")
     if len(df) >= 3:
         try:
@@ -595,7 +602,7 @@ def render_visual_analysis():
             st.write("""
             **Strategy Guide (Updated):**
             *   **High Potential (Stable)**: The "Holy Grail". High profit, low volatility. Safe bets.
-            *   **High Potential (Volatile)**: High profit, but prices swing wildy. Good for sniping, bad for holding.
+            *   **High Potential (Volatile)**: High profit, but prices swing wildly. Good for sniping, bad for holding.
             *   **Volatility**: Measured by the price swing over the last 7 days. Green = Safe, Red = Risky.
             """)
             
