@@ -202,16 +202,6 @@ with st.sidebar.expander("Maintenance"):
         st.success("Attempted to kill all collector processes.")
         time.sleep(1)
         st.rerun()
-
-# Show last DB update in sidebar
-try:
-    last_db_update = database.get_latest_timestamp()
-    if last_db_update:
-        st.sidebar.info(f"DB Last Updated:\n{last_db_update.strftime('%Y-%m-%d %H:%M:%S')}")
-    else:
-        st.sidebar.info("DB Status: Empty")
-except Exception:
-    pass
         
 st.sidebar.markdown("---")
 
@@ -225,13 +215,27 @@ trend_window_hours = st.sidebar.number_input("Trend Analysis Window (Hours)", va
 search_term = st.sidebar.text_input("Search Item Name")
 
 # --- Auto-Refresh Configuration ---
-# Dashboard automatically refreshes every 5 minutes (300 seconds) to match collector interval
-refresh_interval = 300
+# Dashboard automatically refreshes every 60 seconds to check for new data
+refresh_interval = 60
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### About")
 st.sidebar.caption("Tarkov Trader Profit v1.1")
 st.sidebar.caption("Data provided by tarkov.dev")
+
+@st.fragment(run_every=30)
+def render_sidebar_status():
+    # Show last DB update in sidebar
+    try:
+        last_db_update = database.get_latest_timestamp()
+        if last_db_update:
+            st.sidebar.info(f"DB Last Updated:\n{last_db_update.strftime('%Y-%m-%d %H:%M:%S')}")
+        else:
+            st.sidebar.info("DB Status: Empty")
+    except Exception:
+        pass
+
+render_sidebar_status()
 
 def get_filtered_data():
     try:
