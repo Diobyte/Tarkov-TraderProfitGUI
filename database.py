@@ -315,3 +315,20 @@ def get_latest_timestamp() -> Optional[datetime]:
         
         return None
     return None
+
+@retry_db_op()
+def clear_all_data() -> None:
+    """
+    Deletes ALL data from the prices table. Use with caution.
+    """
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    c = conn.cursor()
+    c.execute('DELETE FROM prices')
+    conn.commit()
+    
+    try:
+        c.execute('VACUUM')
+    except sqlite3.OperationalError:
+        logging.warning("Could not VACUUM database (locked?), skipping.")
+        
+    conn.close()

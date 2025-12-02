@@ -262,6 +262,16 @@ with st.sidebar.expander("Maintenance"):
         st.success("Attempted to kill all collector processes.")
         time.sleep(1)
         st.rerun()
+    
+    if st.button("Clear Database (Reset)", type="primary"):
+        try:
+            database.clear_all_data()
+            st.cache_data.clear()
+            st.success("Database cleared successfully!")
+            time.sleep(1)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to clear database: {e}")
         
 st.sidebar.markdown("---")
 
