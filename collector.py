@@ -10,6 +10,7 @@ import sys
 import signal
 import argparse
 import os
+from typing import Optional, Dict, Any
 
 # Configuration
 COLLECTION_INTERVAL_MINUTES = 5
@@ -26,7 +27,7 @@ logging.basicConfig(
     ]
 )
 
-def handle_exit(signum, frame):
+def handle_exit(signum: int, frame: Any) -> None:
     logging.info(f"Collector stopped by signal {signum}.")
     sys.exit(0)
 
@@ -34,7 +35,7 @@ def handle_exit(signum, frame):
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
 
-def get_session():
+def get_session() -> requests.Session:
     session = requests.Session()
     retry = Retry(
         total=5,
@@ -49,7 +50,7 @@ def get_session():
     session.mount('https://', adapter)
     return session
 
-def run_query(query):
+def run_query(query: str) -> Optional[Dict[str, Any]]:
     headers = {"Content-Type": "application/json"}
     session = get_session()
     try:
@@ -74,7 +75,8 @@ def run_query(query):
         logging.error(f"Error querying API: {e}")
         return None
 
-def fetch_and_store_data():
+def fetch_and_store_data() -> None:
+    start_time = time.time()
     logging.info("Fetching data...")
     query = """
     {
@@ -171,11 +173,12 @@ def fetch_and_store_data():
             
     if batch_data:
         database.save_prices_batch(batch_data)
-        logging.info(f"Stored {len(batch_data)} items.")
+        duration = time.time() - start_time
+        logging.info(f"Stored {len(batch_data)} items in {duration:.2f} seconds.")
     else:
         logging.info("No profitable items found or API error.")
 
-def cleanup_job():
+def cleanup_job() -> None:
     try:
         # Retention set to manage DB size
         # Increase this if you need more historical data for ML, but be aware of DB size
@@ -185,7 +188,7 @@ def cleanup_job():
     except Exception as e:
         logging.error(f"Error during cleanup: {e}")
 
-def job():
+def job() -> None:
     try:
         fetch_and_store_data()
     except Exception as e:

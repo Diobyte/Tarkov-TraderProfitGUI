@@ -1,12 +1,14 @@
 import sqlite3
 import os
+import time
 from datetime import datetime, timedelta
+from typing import List, Tuple, Optional, Any
 
 # Ensure DB is always created in the same directory as this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, 'tarkov_data.db')
 
-def init_db():
+def init_db() -> None:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     # Enable WAL mode for better concurrency
     conn.execute('PRAGMA journal_mode=WAL;')
@@ -67,7 +69,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_prices_batch(items):
+def save_prices_batch(items: List[Tuple]) -> None:
     """
     Saves a list of items in a single transaction.
     items: list of tuples/dicts matching the schema
@@ -75,21 +77,30 @@ def save_prices_batch(items):
     if not items:
         return
         
-    conn = sqlite3.connect(DB_NAME, timeout=30)
-    c = conn.cursor()
-    
-    # Prepare the data for executemany
-    # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
-    
-    c.executemany('''
-        INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', items)
-    
-    conn.commit()
-    conn.close()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            conn = sqlite3.connect(DB_NAME, timeout=30)
+            c = conn.cursor()
+            
+            # Prepare the data for executemany
+            # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+            
+            c.executemany('''
+                INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', items)
+            
+            conn.commit()
+            conn.close()
+            return
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < max_retries - 1:
+                time.sleep(1)
+                continue
+            raise e
 
-def get_latest_prices():
+def get_latest_prices() -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     # Get the latest timestamp
     c = conn.cursor()
@@ -109,7 +120,7 @@ def get_latest_prices():
     conn.close()
     return rows
 
-def get_item_history(item_id):
+def get_item_history(item_id: str) -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -122,7 +133,7 @@ def get_item_history(item_id):
     conn.close()
     return rows
 
-def get_market_trends(hours=6):
+def get_market_trends(hours: int = 6) -> List[Tuple]:
     """
     Calculates volatility and average profit over the last X hours.
     Returns a dictionary keyed by item_id.
@@ -153,7 +164,7 @@ def get_market_trends(hours=6):
     conn.close()
     return rows
 
-def get_all_prices():
+def get_all_prices() -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -164,7 +175,7 @@ def get_all_prices():
     conn.close()
     return rows
 
-def cleanup_old_data(days=7):
+def cleanup_old_data(days: int = 7) -> int:
     """
     Deletes records older than the specified number of days to keep the DB size manageable.
     """
@@ -179,7 +190,7 @@ def cleanup_old_data(days=7):
     conn.close()
     return deleted_count
 
-def get_latest_timestamp():
+def get_latest_timestamp() -> Optional[datetime]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     try:

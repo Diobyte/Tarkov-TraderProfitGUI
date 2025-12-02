@@ -11,6 +11,8 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import plotly.express as px
 import plotly.graph_objects as go
+import psutil
+from typing import Tuple, Optional, Any
 
 # --- Configuration ---
 # Flea Market Level Requirements (Based on Patch 0.15+ changes)
@@ -62,11 +64,7 @@ database.init_db()
 PID_FILE = "collector.pid"
 STANDALONE_PID_FILE = "collector_standalone.pid"
 
-import psutil
-
-# ...existing code...
-
-def is_collector_running():
+def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
     # Check standalone first
     if os.path.exists(STANDALONE_PID_FILE):
         try:
@@ -95,7 +93,7 @@ def is_collector_running():
             return False, None, None
     return False, None, None
 
-def start_collector():
+def start_collector() -> None:
     running, _, _ = is_collector_running()
     if running:
         return
@@ -122,7 +120,7 @@ def start_collector():
         f.write(str(proc.pid))
     logging.info(f"Started collector with PID {proc.pid}")
 
-def stop_collector():
+def stop_collector() -> None:
     running, pid, mode = is_collector_running()
     if running and pid:
         if mode == "standalone":
@@ -139,7 +137,7 @@ def stop_collector():
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
 
-def force_kill_all_collectors():
+def force_kill_all_collectors() -> None:
     # 1. Try standard stop first
     stop_collector()
     
@@ -170,7 +168,7 @@ st.title("Tarkov Trader Profit Dashboard (RUB)")
 
 # --- Data Loading ---
 @st.cache_data(ttl=10) # Cache data for 10 seconds to prevent DB spam
-def load_data(trend_hours=168):
+def load_data(trend_hours: int = 168) -> pd.DataFrame:
     max_retries = 3
     for attempt in range(max_retries):
         try:
