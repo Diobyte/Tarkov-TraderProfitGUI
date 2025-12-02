@@ -198,13 +198,26 @@ def get_latest_timestamp() -> Optional[datetime]:
         result = c.fetchone()[0]
         conn.close()
         if result:
-            # Handle potential format differences if any, but usually it's iso format string
+            # Handle potential format differences
             try:
                 return datetime.fromisoformat(result)
             except ValueError:
-                # Fallback for older python versions or different formats if needed
-                # But fromisoformat is standard for what sqlite3 adapter stores
-                return datetime.strptime(result, '%Y-%m-%d %H:%M:%S.%f')
+                pass
+            
+            # Try common formats
+            formats = [
+                '%Y-%m-%d %H:%M:%S.%f',
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%d %H:%M'
+            ]
+            
+            for fmt in formats:
+                try:
+                    return datetime.strptime(result, fmt)
+                except ValueError:
+                    continue
+            
+            return None
         return None
     except Exception:
         conn.close()

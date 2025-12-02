@@ -145,8 +145,8 @@ def force_kill_all_collectors() -> None:
     try:
         if sys.platform == "win32":
             # Use PowerShell to find and kill python processes running collector.py
-            # We use Get-CimInstance or Get-Process as Get-WmiObject is deprecated
-            cmd = "Get-Process | Where-Object { $_.CommandLine -like '*collector.py*' } | Stop-Process -Force"
+            # We use Get-CimInstance to reliably get the command line arguments
+            cmd = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*collector.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
             subprocess.run(["powershell", "-Command", cmd], creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             subprocess.run(["pkill", "-f", "collector.py"])
