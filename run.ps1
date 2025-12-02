@@ -184,7 +184,7 @@ $StreamlitLog = Join-Path $ScriptPath "streamlit_server.log"
 # We use -Wait to keep the script running until Streamlit exits
 $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
 $ProcessInfo.FileName = $VenvPython
-$ProcessInfo.Arguments = "-u -m streamlit run `"$($ScriptPath)\app.py`" --server.headless=false"
+$ProcessInfo.Arguments = "-u -m streamlit run `"$($ScriptPath)\app.py`" --server.headless=false --server.address=localhost"
 $ProcessInfo.RedirectStandardOutput = $true
 $ProcessInfo.RedirectStandardError = $true
 $ProcessInfo.UseShellExecute = $false
