@@ -39,7 +39,8 @@ class TestCleanupAndTrends(unittest.TestCase):
         self._insert_item('b', recent_ts)
 
         deleted = database.cleanup_old_data(days=7, vacuum=False)
-        self.assertGreaterEqual(deleted, 1)
+        self.assertIsNotNone(deleted)
+        self.assertGreaterEqual(deleted, 1)  # type: ignore[arg-type]
 
         # Ensure recent remains
         conn = sqlite3.connect(self.test_db)
@@ -58,9 +59,10 @@ class TestCleanupAndTrends(unittest.TestCase):
         self._insert_item('x', inside, profit=1500)
 
         rows = database.get_market_trends(hours=6)
+        self.assertIsNotNone(rows)
         # Expect one row for item 'x' and avg computed over the window (> cutoff)
-        self.assertTrue(any(r[0] == 'x' for r in rows))
-        for r in rows:
+        self.assertTrue(any(r[0] == 'x' for r in rows))  # type: ignore[union-attr]
+        for r in rows:  # type: ignore[union-attr]
             if r[0] == 'x':
                 avg_profit = r[1]
                 # Should reflect only the 'inside' record (1500)

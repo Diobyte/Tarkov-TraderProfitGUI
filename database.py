@@ -131,7 +131,7 @@ def save_prices_batch(items: List[Tuple]) -> None:
     conn.close()
 
 @retry_db_op()
-def get_latest_prices() -> List[Tuple]:
+def get_latest_prices() -> Optional[List[Tuple]]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     
@@ -191,7 +191,7 @@ def get_latest_prices() -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_item_history(item_id: str) -> List[Tuple]:
+def get_item_history(item_id: str) -> Optional[List[Tuple]]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -205,7 +205,7 @@ def get_item_history(item_id: str) -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_market_trends(hours: int = 6) -> List[Tuple]:
+def get_market_trends(hours: int = 6) -> Optional[List[Tuple]]:
     """
     Calculates volatility and average profit over the last X hours.
     Returns a dictionary keyed by item_id.
@@ -250,7 +250,7 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_all_prices() -> List[Tuple]:
+def get_all_prices() -> Optional[List[Tuple]]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -262,7 +262,7 @@ def get_all_prices() -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
+def cleanup_old_data(days: int = 7, vacuum: bool = False) -> Optional[int]:
     """
     Deletes records older than the specified number of days to keep the DB size manageable.
     Vacuuming is optional as it can lock the database for a long time.

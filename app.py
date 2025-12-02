@@ -94,6 +94,9 @@ def start_collector() -> None:
 
     # Redirect stdout/stderr to a file to capture startup errors
     # This is crucial for debugging if the collector fails to start (e.g. missing imports)
+    # Note: We intentionally don't close the log_file handle here because the subprocess
+    # inherits it and needs to write to it for its entire lifetime.
+    log_file = None
     try:
         log_file = open("collector_startup.log", "a")
         proc = subprocess.Popen(
@@ -109,6 +112,8 @@ def start_collector() -> None:
             # Process exited immediately
             st.error(f"Collector failed to start. Check collector_startup.log for details. Return code: {proc.returncode}")
             logging.error(f"Collector failed to start. Return code: {proc.returncode}")
+            if log_file:
+                log_file.close()
             return
         
         with open(PID_FILE, 'w') as f:
@@ -117,6 +122,8 @@ def start_collector() -> None:
     except Exception as e:
         logging.error(f"Failed to start collector process: {e}")
         st.error(f"Failed to start collector process: {e}")
+        if log_file:
+            log_file.close()
 
 def stop_collector() -> None:
     running, pid, mode = is_collector_running()
@@ -165,7 +172,7 @@ def force_kill_all_collectors() -> None:
     if os.path.exists(PID_FILE):
         try:
             os.remove(PID_FILE)
-        except:
+        except OSError:
             pass
 
 st.set_page_config(
@@ -218,7 +225,7 @@ def load_data(trend_hours: int = 168) -> pd.DataFrame:
     try:
         # 1. Get Latest Snapshot
         data = database.get_latest_prices()
-        if not data:
+        if data is None or len(data) == 0:
             logging.warning("No data returned from database.")
             return pd.DataFrame()
         
@@ -498,7 +505,11 @@ def render_header_metrics():
     else:
         st.info("No items match your filters to generate recommendations.")
     
-    st.write(f"Last updated: {filtered_df['timestamp'].iloc[0] if not filtered_df.empty else 'Never'}")
+    try:
+        last_update = filtered_df['timestamp'].iloc[0] if not filtered_df.empty else 'Never'
+        st.write(f"Last updated: {last_update}")
+    except (IndexError, KeyError):
+        st.write("Last updated: Unknown")
 
 @st.fragment(run_every=refresh_interval)
 def render_market_table():
@@ -547,7 +558,7 @@ def render_visual_analysis():
         else:
             # Use shared utility for consistency
             df = utils.calculate_metrics(df)
-    except:
+    except Exception:
         df = filtered_df
 
     if df.empty:

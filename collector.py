@@ -266,6 +266,6 @@ if __name__ == "__main__":
         if os.path.exists(pid_file):
             try:
                 os.remove(pid_file)
-            except:
+            except OSError:
                 pass
         sys.exit(0)
