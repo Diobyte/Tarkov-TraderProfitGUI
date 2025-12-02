@@ -88,6 +88,8 @@ def fetch_and_store_data():
             changeLast48hPercent
             weight
             iconLink
+            types
+            lastOfferCount
             category {
                 name
             }
@@ -116,6 +118,16 @@ def fetch_and_store_data():
     current_time = datetime.now()
     
     for item in items:
+        # Filter out items explicitly marked as noFlea
+        types = item.get('types', [])
+        if 'noFlea' in types:
+            continue
+
+        # Filter out items with very low offer counts (unreliable/ghost offers)
+        offer_count = item.get('lastOfferCount', 0) or 0
+        if offer_count < 2:
+            continue
+
         item_id = item['id']
         name = item['name']
         icon_link = item.get('iconLink', '')

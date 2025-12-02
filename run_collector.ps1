@@ -54,7 +54,7 @@ $VenvPath = Join-Path $ScriptPath ".venv"
 $VenvPython = Join-Path $VenvPath "Scripts\python.exe"
 
 if (-not (Test-Path $VenvPython)) {
-    Write-Host "[ERROR] Virtual environment not found. Please run 'run.bat' first to set up the project." -ForegroundColor Red
+    Write-Host "[ERROR] Virtual environment not found. Please run 'run.ps1' first to set up the project." -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
 }

@@ -12,6 +12,41 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import plotly.express as px
 import plotly.graph_objects as go
 
+# --- Configuration ---
+# Flea Market Level Requirements (Based on Patch 0.15+ changes)
+
+CATEGORY_LOCKS = {
+    "Sniper rifle": 20,
+    "Assault rifle": 25,
+    "Assault carbine": 25,
+    "Marksman rifle": 25,
+    "Backpack": 25,
+    "Foregrip": 20,
+    "Comb. tact. device": 25,
+    "Flashlight": 25,
+    "Auxiliary Mod": 25,
+    "Comb. muzzle device": 20,
+    "Flashhider": 20,
+    "Silencer": 20,
+    "Building material": 30,
+    "Electronics": 30,
+    "Household goods": 30,
+    "Jewelry": 30,
+    "Tool": 30,
+    "Battery": 30,
+    "Lubricant": 30,
+    "Medical supplies": 30,
+    "Fuel": 30,
+    "Drug": 30, 
+    "Info": 30, 
+}
+
+ITEM_LOCKS = {
+    "PS12B": 40,
+    "M80": 35,
+    "Blackout CJB": 40,
+}
+
 # Configure Logging for the Streamlit App
 logging.basicConfig(
     filename='app.log',
@@ -207,6 +242,7 @@ st.sidebar.markdown("---")
 
 # --- Sidebar Filters ---
 st.sidebar.header("Filters")
+player_level = st.sidebar.slider("Your Player Level", min_value=1, max_value=70, value=15, help="Filters items based on Flea Market level requirements.")
 min_profit = st.sidebar.number_input("Min Profit (RUB)", value=0, step=1000)
 min_roi = st.sidebar.number_input("Min ROI (%)", value=0.0, step=1.0)
 min_pps = st.sidebar.number_input("Min Profit Per Slot (RUB)", value=0, step=1000)
@@ -281,6 +317,31 @@ def get_filtered_data():
 
     if search_term:
         filtered_df = filtered_df[filtered_df['name'].str.contains(search_term, case=False)]
+    
+    # Apply Level Filters
+    if player_level < 15:
+        # Flea market is locked below level 15
+        st.warning("Flea Market is locked below level 15. No items available.")
+        return pd.DataFrame(columns=filtered_df.columns)
+        
+    def is_item_unlocked(row):
+        name = row['name']
+        category = row['category']
+        
+        # Check specific item overrides first
+        for restricted_item, level_req in ITEM_LOCKS.items():
+            if restricted_item in name:
+                if player_level < level_req:
+                    return False
+        
+        # Check Category
+        if category in CATEGORY_LOCKS:
+            if player_level < CATEGORY_LOCKS[category]:
+                return False
+                
+        return True
+
+    filtered_df = filtered_df[filtered_df.apply(is_item_unlocked, axis=1)]
         
     return filtered_df
 
