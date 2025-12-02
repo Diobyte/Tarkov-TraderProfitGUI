@@ -126,11 +126,6 @@ def fetch_and_store_data() -> None:
         if 'noFlea' in types:
             continue
 
-        # Filter out items with very low offer counts (unreliable/ghost offers)
-        offer_count = item.get('lastOfferCount', 0) or 0
-        if offer_count < 2:
-            continue
-
         item_id = item['id']
         name = item['name']
         icon_link = item.get('iconLink', '')
