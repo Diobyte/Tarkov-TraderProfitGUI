@@ -89,6 +89,8 @@ def init_db() -> None:
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_item_id ON prices (item_id)')
     # Composite index for market trends query optimization
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp_item ON prices (timestamp, item_id)')
+    # Index for optimizing "latest per item" queries
+    c.execute('CREATE INDEX IF NOT EXISTS idx_prices_item_timestamp ON prices (item_id, timestamp)')
 
     # Optimize database
     c.execute('PRAGMA optimize;')
@@ -131,22 +133,59 @@ def save_prices_batch(items: List[Tuple]) -> None:
 @retry_db_op()
 def get_latest_prices() -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
-    # Get the latest timestamp
     c = conn.cursor()
+    
+    # 1. Get the absolute latest timestamp to establish a "current" anchor point
     c.execute('SELECT MAX(timestamp) FROM prices')
     result = c.fetchone()
-    latest_time = result[0] if result else None
+    latest_ts_str = result[0] if result else None
     
-    if not latest_time:
+    if not latest_ts_str:
         conn.close()
         return []
 
+    # 2. Calculate a lookback window relative to the latest data
+    # This ensures we capture items from recent previous batches if the latest batch was partial
+    # (e.g. API returned 2300 items instead of 4000), but doesn't show ancient data.
+    try:
+        # Handle ISO format (most common)
+        latest_dt = datetime.fromisoformat(latest_ts_str)
+    except ValueError:
+        try:
+            # Fallback for legacy formats
+            latest_dt = datetime.strptime(latest_ts_str, '%Y-%m-%d %H:%M:%S.%f')
+        except ValueError:
+            # If parsing fails, fallback to exact match logic (old behavior)
+            c.execute('''
+                SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category
+                FROM prices
+                WHERE timestamp = ?
+                ORDER BY profit DESC
+            ''', (latest_ts_str,))
+            rows = c.fetchall()
+            conn.close()
+            return rows
+
+    # Window of 45 minutes allows for ~9 missed/partial collection cycles (assuming 5m interval)
+    # This bridges the gap when the API returns partial lists.
+    cutoff_dt = latest_dt - timedelta(minutes=45)
+    cutoff_ts_str = cutoff_dt.isoformat()
+
     c.execute('''
-        SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category
-        FROM prices
-        WHERE timestamp = ?
-        ORDER BY profit DESC
-    ''', (latest_time,))
+        SELECT 
+            p.item_id, p.name, p.flea_price, p.trader_price, p.trader_name, p.profit, 
+            p.timestamp, p.icon_link, p.width, p.height, p.avg_24h_price, 
+            p.low_24h_price, p.change_last_48h, p.weight, p.category
+        FROM prices p
+        INNER JOIN (
+            SELECT item_id, MAX(timestamp) as max_ts
+            FROM prices
+            WHERE timestamp >= ?
+            GROUP BY item_id
+        ) latest ON p.item_id = latest.item_id AND p.timestamp = latest.max_ts
+        ORDER BY p.profit DESC
+    ''', (cutoff_ts_str,))
+    
     rows = c.fetchall()
     conn.close()
     return rows
