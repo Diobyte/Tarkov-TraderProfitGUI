@@ -72,6 +72,7 @@ Once the app is running, your browser will open to `http://localhost:8501`.
   - **Market Table**: The main view. Sort by Profit, ROI, or Discount.
   - **Visual Analysis**: Scatter plots showing Risk vs. Reward.
   - **Item History**: Deep dive into a specific item's price over time.
+  - **Data Review**: View raw data, check all metrics, and export to CSV.
   - **Console**: View system logs for debugging.
 
 ### The Collector
