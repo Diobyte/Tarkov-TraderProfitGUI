@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import database
+import utils
 import time
 import subprocess
 import os
@@ -311,22 +312,8 @@ def get_filtered_data():
         return df
 
     try:
-        # Calculate ROI and Profit Per Slot
-        # Avoid division by zero
-        df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
-        
-        df['slots'] = df['width'] * df['height']
-        df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
-        
-        # Calculate Discount from Average
-        df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
-        df['discount_percent'] = df.apply(
-            lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, 
-            axis=1
-        )
-        
-        # Calculate Profit per Kg
-        df['profit_per_kg'] = df.apply(lambda x: x['profit'] / x['weight'] if x['weight'] > 0 else 0, axis=1)
+        # Calculate Metrics using shared utility
+        df = utils.calculate_metrics(df)
     except Exception as e:
         st.error(f"Error calculating metrics: {e}")
         return pd.DataFrame()

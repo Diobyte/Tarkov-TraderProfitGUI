@@ -1,6 +1,12 @@
 import unittest
 import pandas as pd
 import numpy as np
+import sys
+import os
+
+# Add parent directory to path to import utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import utils
 
 class TestCalculations(unittest.TestCase):
     def test_calculations(self):
@@ -17,24 +23,8 @@ class TestCalculations(unittest.TestCase):
         
         df = pd.DataFrame(data)
         
-        # Logic from app.py
-        
-        # ROI
-        df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
-        
-        # Slots
-        df['slots'] = df['width'] * df['height']
-        df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
-        
-        # Discount
-        df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
-        df['discount_percent'] = df.apply(
-            lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, 
-            axis=1
-        )
-        
-        # Profit per Kg
-        df['profit_per_kg'] = df.apply(lambda x: x['profit'] / x['weight'] if x['weight'] > 0 else 0, axis=1)
+        # Logic from utils
+        df = utils.calculate_metrics(df)
         
         # Assertions
         # Item 1: Normal
