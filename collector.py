@@ -182,7 +182,8 @@ def cleanup_job() -> None:
     try:
         # Retention set to manage DB size
         # Increase this if you need more historical data for ML, but be aware of DB size
-        deleted = database.cleanup_old_data(days=DATA_RETENTION_DAYS) 
+        # We do NOT vacuum automatically here to prevent locking the DB for too long during collection cycles
+        deleted = database.cleanup_old_data(days=DATA_RETENTION_DAYS, vacuum=False) 
         if deleted is not None and deleted > 0:
             logging.info(f"Cleaned up {deleted} old records.")
     except Exception as e:

@@ -262,9 +262,10 @@ def get_all_prices() -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def cleanup_old_data(days: int = 7) -> int:
+def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     """
     Deletes records older than the specified number of days to keep the DB size manageable.
+    Vacuuming is optional as it can lock the database for a long time.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -273,10 +274,12 @@ def cleanup_old_data(days: int = 7) -> int:
     deleted_count = c.rowcount
     conn.commit()
     
-    # Only vacuum if we actually deleted something significant to avoid locking
-    if deleted_count > 1000:
+    # Only vacuum if explicitly requested and we deleted something
+    if vacuum and deleted_count > 1000:
         try:
+            logging.info("Starting database VACUUM...")
             c.execute('VACUUM')
+            logging.info("Database VACUUM completed.")
         except sqlite3.OperationalError:
             logging.warning("Could not VACUUM database (locked?), skipping.")
             
