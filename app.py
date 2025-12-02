@@ -62,25 +62,35 @@ database.init_db()
 PID_FILE = "collector.pid"
 STANDALONE_PID_FILE = "collector_standalone.pid"
 
+import psutil
+
+# ...existing code...
+
 def is_collector_running():
     # Check standalone first
     if os.path.exists(STANDALONE_PID_FILE):
         try:
             with open(STANDALONE_PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
-            os.kill(pid, 0)
-            return True, pid, "standalone"
-        except (OSError, ValueError):
+            
+            if psutil.pid_exists(pid):
+                p = psutil.Process(pid)
+                # Verify it's actually python
+                if "python" in p.name().lower():
+                    return True, pid, "standalone"
+        except (OSError, ValueError, psutil.NoSuchProcess):
             pass # Fall through to check normal PID
 
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
-            # Check if process exists
-            os.kill(pid, 0)
-            return True, pid, "session"
-        except (OSError, ValueError):
+            
+            if psutil.pid_exists(pid):
+                p = psutil.Process(pid)
+                if "python" in p.name().lower():
+                    return True, pid, "session"
+        except (OSError, ValueError, psutil.NoSuchProcess):
             # Process dead or file corrupt
             return False, None, None
     return False, None, None
@@ -137,8 +147,8 @@ def force_kill_all_collectors():
     try:
         if sys.platform == "win32":
             # Use PowerShell to find and kill python processes running collector.py
-            # We use subprocess to avoid shell=True for security, but here we need shell features or powershell
-            cmd = "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like '*collector.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+            # We use Get-CimInstance or Get-Process as Get-WmiObject is deprecated
+            cmd = "Get-Process | Where-Object { $_.CommandLine -like '*collector.py*' } | Stop-Process -Force"
             subprocess.run(["powershell", "-Command", cmd], creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             subprocess.run(["pkill", "-f", "collector.py"])
