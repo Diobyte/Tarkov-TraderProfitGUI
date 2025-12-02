@@ -263,7 +263,8 @@ st.sidebar.markdown("---")
 # --- Sidebar Filters ---
 st.sidebar.header("Filters")
 player_level = st.sidebar.slider("Your Player Level", min_value=1, max_value=70, value=15, help="Filters items based on Flea Market level requirements.")
-min_profit = st.sidebar.number_input("Min Profit (RUB)", value=0, step=1000)
+show_locked = st.sidebar.checkbox("Show Locked Items", value=False, help="Show items even if you don't meet the level requirement.")
+min_profit = st.sidebar.number_input("Min Profit (RUB)", value=0, step=1000, min_value=-1000000)
 min_roi = st.sidebar.number_input("Min ROI (%)", value=0.0, step=1.0)
 min_pps = st.sidebar.number_input("Min Profit Per Slot (RUB)", value=0, step=1000)
 min_discount = st.sidebar.number_input("Min Discount from Avg (%)", value=0.0, step=5.0)
@@ -343,29 +344,30 @@ def get_filtered_data():
         filtered_df = filtered_df[filtered_df['name'].str.contains(search_term, case=False)]
     
     # Apply Level Filters
-    if player_level < 15:
-        # Flea market is locked below level 15
-        st.warning("Flea Market is locked below level 15. No items available.")
-        return pd.DataFrame(columns=filtered_df.columns)
-        
-    def is_item_unlocked(row):
-        name = row['name']
-        category = row['category']
-        
-        # Check specific item overrides first
-        for restricted_item, level_req in ITEM_LOCKS.items():
-            if restricted_item in name:
-                if player_level < level_req:
+    if not show_locked:
+        if player_level < 15:
+            # Flea market is locked below level 15
+            st.warning("Flea Market is locked below level 15. No items available.")
+            return pd.DataFrame(columns=filtered_df.columns)
+            
+        def is_item_unlocked(row):
+            name = row['name']
+            category = row['category']
+            
+            # Check specific item overrides first
+            for restricted_item, level_req in ITEM_LOCKS.items():
+                if restricted_item in name:
+                    if player_level < level_req:
+                        return False
+            
+            # Check Category
+            if category in CATEGORY_LOCKS:
+                if player_level < CATEGORY_LOCKS[category]:
                     return False
-        
-        # Check Category
-        if category in CATEGORY_LOCKS:
-            if player_level < CATEGORY_LOCKS[category]:
-                return False
-                
-        return True
+                    
+            return True
 
-    filtered_df = filtered_df[filtered_df.apply(is_item_unlocked, axis=1)]
+        filtered_df = filtered_df[filtered_df.apply(is_item_unlocked, axis=1)]
         
     return filtered_df
 
@@ -389,6 +391,10 @@ def render_header_metrics():
     # --- KPI Metrics ---
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Opportunities", len(filtered_df))
+    
+    if len(filtered_df) < 5 and not show_locked and min_profit >= 0:
+        st.info("Tip: Few items found? Try enabling 'Show Locked Items' or lowering 'Min Profit' to see more opportunities.")
+
     if not filtered_df.empty:
         col2.metric("Max Profit", f"{filtered_df['profit'].max():,.0f} ₽")
         col3.metric("Avg ROI", f"{filtered_df['roi'].mean():.1f}%")
