@@ -98,3 +98,10 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 ---
 
 _Not affiliated with Battlestate Games._
+
+## 🔒 Security
+
+Please review our security policy in [SECURITY.md](SECURITY.md).
+If you find a vulnerability, submit a private advisory via GitHub Security
+Advisories for this repository or open an issue labeled `security` without
+public exploit details.
