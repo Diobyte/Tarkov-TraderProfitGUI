@@ -277,6 +277,7 @@ refresh_interval = 60
 
 if st.sidebar.button("Refresh Data"):
     st.cache_data.clear()
+    st.toast("Refreshing data...", icon="🔄")
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -589,6 +590,7 @@ def render_visual_analysis():
                     title='Risk vs Reward: Profit vs Volatility (7 Days)',
                     labels={'volatility': 'Volatility (Risk)', 'profit': 'Profit (Reward)'}
                 )
+                fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Break Even")
                 st.plotly_chart(fig, use_container_width=True)
             
             with col_b:
@@ -611,6 +613,19 @@ def render_visual_analysis():
             *   **High Potential (Volatile)**: High profit, but prices swing wildly. Good for sniping, bad for holding.
             *   **Volatility**: Calculated as `Max Profit - Min Profit` over the last 7 days. A larger range means higher risk/instability.
             """)
+            
+            # New Chart: Profit Distribution
+            st.markdown("### 📈 Market Profit Distribution")
+            fig_hist = px.histogram(
+                df, 
+                x="profit", 
+                nbins=50, 
+                title="Distribution of Profit Margins",
+                labels={'profit': 'Profit (RUB)'},
+                color_discrete_sequence=['#3366cc']
+            )
+            fig_hist.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Break Even")
+            st.plotly_chart(fig_hist, use_container_width=True)
             
             st.markdown("### 📊 Category Performance")
             cat_stats = df.groupby('category')[['profit', 'roi']].mean().reset_index()
@@ -652,6 +667,15 @@ def render_item_history():
                     hist_df = pd.DataFrame(history_data, columns=['timestamp', 'flea_price', 'trader_price', 'profit'])
                     hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'])
                     
+                    # Add summary metrics
+                    latest = hist_df.iloc[-1]
+                    avg_profit = hist_df['profit'].mean()
+                    
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Current Profit", f"{latest['profit']:,} ₽")
+                    m2.metric("Avg Profit (Period)", f"{avg_profit:,.0f} ₽")
+                    m3.metric("Lowest Price", f"{hist_df['flea_price'].min():,.0f} ₽")
+
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['profit'], mode='lines+markers', name='Profit'))
                     fig.add_trace(go.Scatter(x=hist_df['timestamp'], y=hist_df['flea_price'], mode='lines', name='Flea Price', line=dict(dash='dash')))
