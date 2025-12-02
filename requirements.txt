@@ -1,0 +1,7 @@
+requests
+pandas
+streamlit>=1.37.0
+schedule
+scikit-learn
+plotly
+pyarrow
