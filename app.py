@@ -109,16 +109,23 @@ def start_collector() -> None:
     if sys.platform == "win32":
         creation_flags = subprocess.CREATE_NO_WINDOW
 
-    # We do NOT redirect stdout/stderr to a file anymore, so it appears in the new console window
-    # Since we are hiding the window, we should rely on the collector's internal file logging
-    proc = subprocess.Popen(
-        [sys.executable, "-u", "collector.py"], 
-        creationflags=creation_flags
-    )
-    
-    with open(PID_FILE, 'w') as f:
-        f.write(str(proc.pid))
-    logging.info(f"Started collector with PID {proc.pid}")
+    # Redirect stdout/stderr to a file to capture startup errors
+    # This is crucial for debugging if the collector fails to start (e.g. missing imports)
+    try:
+        log_file = open("collector_startup.log", "a")
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "collector.py"], 
+            creationflags=creation_flags,
+            stdout=log_file,
+            stderr=subprocess.STDOUT
+        )
+        
+        with open(PID_FILE, 'w') as f:
+            f.write(str(proc.pid))
+        logging.info(f"Started collector with PID {proc.pid}")
+    except Exception as e:
+        logging.error(f"Failed to start collector process: {e}")
+        st.error(f"Failed to start collector process: {e}")
 
 def stop_collector() -> None:
     running, pid, mode = is_collector_running()
@@ -212,6 +219,7 @@ def load_data(trend_hours: int = 168) -> pd.DataFrame:
             logging.error(f"Error loading data from database: {e}")
             st.error(f"Error loading data from database: {e}")
             return pd.DataFrame()
+    return pd.DataFrame()
 
 # --- Sidebar: Collector Control ---
 st.sidebar.header("Data Collector")
@@ -524,7 +532,11 @@ def render_visual_analysis():
                 top_c1 = top_2_clusters[0]
                 top_c2 = top_2_clusters[1]
                 
-                if cluster_stats.loc[top_c1, 'volatility'] > cluster_stats.loc[top_c2, 'volatility']:
+                # Use type: ignore to suppress Pylance Scalar errors
+                vol1 = float(cluster_stats.loc[top_c1, 'volatility']) # type: ignore
+                vol2 = float(cluster_stats.loc[top_c2, 'volatility']) # type: ignore
+                
+                if vol1 > vol2:
                     cluster_map[top_c1] = "High Potential (Volatile)"
                     cluster_map[top_c2] = "High Potential (Stable)"
                 else:
@@ -635,7 +647,7 @@ def render_item_history():
 @st.fragment(run_every=refresh_interval)
 def render_logs():
     st.subheader("System Logs")
-    log_type = st.radio("Select Log File", ["Collector Logs (Background Process)", "App Logs (Dashboard Errors)"], horizontal=True)
+    log_type = st.radio("Select Log File", ["Collector Logs (Background Process)", "App Logs (Dashboard Errors)", "Startup Logs (Collector Startup)"], horizontal=True)
     
     col_c1, col_c2 = st.columns([1, 5])
     with col_c1:
@@ -644,6 +656,8 @@ def render_logs():
     
     if "Collector" in log_type:
         log_file_path = "collector.log"
+    elif "Startup" in log_type:
+        log_file_path = "collector_startup.log"
     else:
         log_file_path = "app.log"
 
