@@ -159,20 +159,47 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# --- Step 4.5: Pre-Launch Cleanup ---
+Write-Host "[INFO] Cleaning up previous sessions..." -ForegroundColor Cyan
+
+# Helper to kill process by PID file
+function Kill-ProcessByPidFile {
+    param([string]$PidFileName)
+    $PidPath = Join-Path $ScriptPath $PidFileName
+    if (Test-Path $PidPath) {
+        try {
+            $PidVal = Get-Content $PidPath -ErrorAction SilentlyContinue
+            if ($PidVal -and (Get-Process -Id $PidVal -ErrorAction SilentlyContinue)) {
+                Stop-Process -Id $PidVal -Force -ErrorAction SilentlyContinue
+                Write-Host "[INFO] Stopped previous process (PID: $PidVal) from $PidFileName" -ForegroundColor Yellow
+            }
+            Remove-Item $PidPath -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Host "[WARN] Failed to clean up $PidFileName" -ForegroundColor Yellow
+        }
+    }
+}
+
+Kill-ProcessByPidFile "collector.pid"
+Kill-ProcessByPidFile "collector_standalone.pid"
+
+# Give the OS a moment to release file locks
+Start-Sleep -Milliseconds 500
+
 # --- Step 5: Launch Dashboard ---
 Write-Host "[SUCCESS] Starting Dashboard..." -ForegroundColor Green
 Write-Host "Logs are being saved to 'streamlit_server.log'" -ForegroundColor Gray
 Write-Host "You can close this window to stop the application." -ForegroundColor Gray
 
 # Clean up previous session logs
-$FilesToClean = @("app.log", "collector.log", "collector.pid", "streamlit_server.log")
+$FilesToClean = @("app.log", "collector.log", "streamlit_server.log")
 foreach ($file in $FilesToClean) {
     $fullPath = Join-Path $ScriptPath $file
     if (Test-Path $fullPath) {
         try {
             Remove-Item $fullPath -Force -ErrorAction Stop
         } catch {
-            Write-Host "[WARN] Could not delete $file (locked?). Clearing content instead." -ForegroundColor Yellow
+            # If we can't delete, just clear it. No need to warn the user loudly.
             try { Clear-Content $fullPath -ErrorAction SilentlyContinue } catch {}
         }
     }

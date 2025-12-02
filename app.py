@@ -676,6 +676,80 @@ def render_item_history():
         st.info("No items match your filters.")
 
 @st.fragment(run_every=refresh_interval)
+def render_data_review():
+    st.subheader("Comprehensive Data Review")
+    st.info("This view shows all collected data without the sidebar filters applied.")
+    
+    # Load raw data without sidebar filters
+    try:
+        df = load_data(trend_hours=trend_window_hours)
+        if df.empty:
+            st.warning("No data available.")
+            return
+            
+        # Calculate all metrics
+        df = utils.calculate_metrics(df)
+        
+        # Show basic stats
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Items Tracked", len(df))
+        col2.metric("Profitable Items (>0)", len(df[df['profit'] > 0]))
+        col3.metric("Avg Profit (All)", f"{df['profit'].mean():.0f} ₽")
+        
+        # Option to show all columns or a subset
+        show_all_cols = st.checkbox("Show All Columns", value=True)
+        
+        if show_all_cols:
+            display_df = df
+        else:
+            # Default useful columns
+            cols = ['icon_link', 'name', 'profit', 'roi', 'flea_price', 'trader_price', 'trader_name', 'category', 'timestamp']
+            # Ensure columns exist
+            cols = [c for c in cols if c in df.columns]
+            display_df = df[cols]
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "icon_link": st.column_config.ImageColumn("Icon"),
+                "name": st.column_config.TextColumn("Item Name"),
+                "flea_price": st.column_config.NumberColumn("Flea Price", format="%d ₽"),
+                "trader_price": st.column_config.NumberColumn("Trader Price", format="%d ₽"),
+                "profit": st.column_config.NumberColumn("Profit", format="%d ₽"),
+                "profit_per_slot": st.column_config.NumberColumn("Profit/Slot", format="%d ₽"),
+                "roi": st.column_config.NumberColumn("ROI", format="%.2f %%"),
+                "discount_percent": st.column_config.NumberColumn("Discount", format="%.1f %%"),
+                "avg_24h_price": st.column_config.NumberColumn("24h Avg", format="%d ₽"),
+                "low_24h_price": st.column_config.NumberColumn("24h Low", format="%d ₽"),
+                "timestamp": st.column_config.DatetimeColumn("Last Updated", format="D MMM, HH:mm:ss"),
+                "category": st.column_config.TextColumn("Category"),
+                "weight": st.column_config.NumberColumn("Weight", format="%.2f kg"),
+                "change_last_48h": st.column_config.NumberColumn("48h Change", format="%.1f %%"),
+                "volatility": st.column_config.NumberColumn("Volatility", format="%d ₽"),
+                "trader_name": st.column_config.TextColumn("Trader"),
+                "item_id": st.column_config.TextColumn("ID", help="Unique Item ID"),
+                "width": st.column_config.NumberColumn("W"),
+                "height": st.column_config.NumberColumn("H"),
+                "slots": st.column_config.NumberColumn("Slots"),
+            }
+        )
+        
+        # CSV Download
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "Download Full Dataset (CSV)",
+            csv,
+            "tarkov_data_export.csv",
+            "text/csv",
+            key='download-csv'
+        )
+        
+    except Exception as e:
+        st.error(f"Error loading raw data: {e}")
+
+@st.fragment(run_every=refresh_interval)
 def render_logs():
     st.subheader("System Logs")
     log_type = st.radio("Select Log File", ["Collector Logs (Background Process)", "App Logs (Dashboard Errors)", "Startup Logs (Collector Startup)"], horizontal=True)
@@ -711,7 +785,7 @@ def render_logs():
 render_header_metrics()
 
 # Render Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["Market Table", "Visual Analysis", "Item History", "Console"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Market Table", "Visual Analysis", "Item History", "Data Review", "Console"])
 
 with tab1:
     render_market_table()
@@ -720,4 +794,6 @@ with tab2:
 with tab3:
     render_item_history()
 with tab4:
+    render_data_review()
+with tab5:
     render_logs()
