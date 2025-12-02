@@ -9,6 +9,7 @@ import signal
 import sys
 import logging
 from sklearn.cluster import KMeans
+from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import plotly.express as px
 import plotly.graph_objects as go
@@ -601,6 +602,76 @@ def render_visual_analysis():
             *   **Volatility**: Calculated as `Max Profit - Min Profit` over the last 7 days. A larger range means higher risk/instability.
             """)
             
+            # --- Advanced ML: Anomaly Detection ---
+            st.markdown("### 🕵️ Market Anomalies (Isolation Forest)")
+            st.caption("Detects items with unusual pricing patterns compared to the rest of the market. These could be massive opportunities or data errors.")
+            
+            # Features for anomaly detection
+            anomaly_features = ['profit', 'roi', 'flea_price', 'avg_24h_price', 'discount_percent']
+            X_anomaly = df[anomaly_features].copy().fillna(0)
+            
+            # Fit Isolation Forest
+            iso_forest = IsolationForest(contamination=0.05, random_state=42)
+            df['anomaly_score'] = iso_forest.fit_predict(X_anomaly)
+            
+            # Filter for anomalies (-1)
+            anomalies = df[df['anomaly_score'] == -1].copy()
+            
+            if not anomalies.empty:
+                st.dataframe(
+                    anomalies.sort_values('profit', ascending=False).head(10),
+                    column_config={
+                        "name": "Item Name",
+                        "profit": st.column_config.NumberColumn("Profit", format="%d ₽"),
+                        "flea_price": st.column_config.NumberColumn("Flea Price", format="%d ₽"),
+                        "avg_24h_price": st.column_config.NumberColumn("Avg Price", format="%d ₽"),
+                        "discount_percent": st.column_config.NumberColumn("Discount", format="%.1f %%"),
+                    },
+                    hide_index=True
+                )
+            else:
+                st.info("No significant market anomalies detected.")
+
+            # --- Advanced Viz: Correlation Matrix ---
+            st.markdown("### 🔗 Market Correlations")
+            st.caption("How do different metrics relate to each other? (e.g., Does higher weight mean higher profit?)")
+            
+            corr_cols = ['profit', 'roi', 'flea_price', 'weight', 'volatility', 'discount_percent', 'change_last_48h']
+            # Ensure cols exist
+            corr_cols = [c for c in corr_cols if c in df.columns]
+            
+            if len(corr_cols) > 1:
+                corr_matrix = df[corr_cols].corr()
+                fig_corr = px.imshow(
+                    corr_matrix,
+                    text_auto=True,
+                    aspect="auto",
+                    color_continuous_scale='RdBu_r',
+                    title="Correlation Heatmap"
+                )
+                st.plotly_chart(fig_corr, use_container_width=True)
+
+            # --- Advanced Viz: Category Distribution ---
+            st.markdown("### 📦 Profit Distribution by Category")
+            st.caption("Box plots show the range of profits. The box represents the middle 50% of items.")
+            
+            # Filter out extreme outliers for better visualization
+            q_low = df["profit"].quantile(0.05)
+            q_high = df["profit"].quantile(0.95)
+            df_filtered_box = df[(df["profit"] > q_low) & (df["profit"] < q_high)]
+            
+            if not df_filtered_box.empty:
+                fig_box = px.box(
+                    df_filtered_box, 
+                    x="category", 
+                    y="profit", 
+                    color="category",
+                    title="Profit Spread per Category (Outliers Removed)",
+                    labels={'profit': 'Profit (RUB)', 'category': ''}
+                )
+                fig_box.update_layout(showlegend=False)
+                st.plotly_chart(fig_box, use_container_width=True)
+
             # New Chart: Profit Distribution
             st.markdown("### 📈 Market Profit Distribution")
             fig_hist = px.histogram(
