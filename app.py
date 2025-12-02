@@ -212,14 +212,17 @@ def load_data(trend_hours: int = 168) -> pd.DataFrame:
                 
                 df['volatility'] = df['trend_max_profit'] - df['trend_min_profit']
                 df['volatility'] = df['volatility'].fillna(0)
+                df['data_points'] = df['data_points'].fillna(0)
             else:
                 df['volatility'] = 0
                 df['trend_avg_profit'] = df['profit']
+                df['data_points'] = 0
         except Exception as e:
             logging.warning(f"Could not load market trends: {e}")
             # Don't show warning to user, just log it and proceed with partial data
             df['volatility'] = 0
             df['trend_avg_profit'] = df['profit']
+            df['data_points'] = 0
 
         return df
     except Exception as e:
@@ -415,19 +418,24 @@ def render_header_metrics():
             
             rec_df = pd.concat([rec_df, norm_df], axis=1)
             
+            # Confidence Score based on data points (More data = more reliable)
+            # Cap at 12 data points (1 hour of data) for max confidence
+            rec_df['confidence_norm'] = rec_df['data_points'].clip(upper=12) / 12.0
+            
             rec_df['trader_score'] = (
-                (rec_df['profit_norm'] * 0.35) +
-                (rec_df['profit_per_slot_norm'] * 0.25) +
+                (rec_df['profit_norm'] * 0.30) +
+                (rec_df['profit_per_slot_norm'] * 0.20) +
                 (rec_df['roi_norm'] * 0.20) +
                 (rec_df['stability_norm'] * 0.10) +
-                (rec_df['discount_percent_norm'] * 0.10)
+                (rec_df['discount_percent_norm'] * 0.10) +
+                (rec_df['confidence_norm'] * 0.10)
             ) * 100
             
             top_10 = rec_df.sort_values('trader_score', ascending=False).head(10)
             
             st.dataframe(
                 top_10,
-                column_order=['name', 'trader_score', 'profit', 'profit_per_slot', 'roi', 'volatility', 'category'],
+                column_order=['name', 'trader_score', 'profit', 'profit_per_slot', 'roi', 'volatility', 'data_points', 'category'],
                 column_config={
                     "name": "Item Name",
                     "trader_score": st.column_config.ProgressColumn("Trader Score", format="%.1f", min_value=0, max_value=100),
@@ -435,6 +443,7 @@ def render_header_metrics():
                     "profit_per_slot": st.column_config.NumberColumn("Profit/Slot", format="%d ₽"),
                     "roi": st.column_config.NumberColumn("ROI", format="%.1f %%"),
                     "volatility": st.column_config.NumberColumn("Volatility (Risk)", format="%d ₽"),
+                    "data_points": st.column_config.NumberColumn("Data Points", help="Number of price checks in the trend window"),
                     "category": "Category"
                 },
                 hide_index=True,

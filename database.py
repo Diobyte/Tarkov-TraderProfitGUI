@@ -213,7 +213,25 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     
-    time_threshold = datetime.now() - timedelta(hours=hours)
+    # Use the latest timestamp in the DB as the anchor, not current time.
+    # This ensures calculations work even if the data is old (e.g. reviewing a dataset)
+    # or if there are gaps in collection.
+    c.execute('SELECT MAX(timestamp) FROM prices')
+    result = c.fetchone()
+    
+    anchor_time = datetime.now()
+    if result and result[0]:
+        try:
+            # Try ISO format first
+            anchor_time = datetime.fromisoformat(result[0])
+        except ValueError:
+            try:
+                # Try legacy format
+                anchor_time = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S.%f')
+            except ValueError:
+                pass
+
+    time_threshold = anchor_time - timedelta(hours=hours)
     
     c.execute('''
         SELECT 
