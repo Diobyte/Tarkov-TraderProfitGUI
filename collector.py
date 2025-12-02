@@ -55,7 +55,7 @@ def run_query(query: str) -> Optional[Dict[str, Any]]:
     session = get_session()
     try:
         # Added timeout to prevent hanging indefinitely
-        response = session.post(API_URL, headers=headers, json={'query': query}, timeout=30)
+        response = session.post(API_URL, headers=headers, json={'query': query}, timeout=60)
         if response.status_code == 200:
             try:
                 return response.json()
@@ -66,7 +66,7 @@ def run_query(query: str) -> Optional[Dict[str, Any]]:
             logging.error(f"Query failed with code {response.status_code}")
             return None
     except requests.Timeout:
-        logging.error("API request timed out after 30 seconds.")
+        logging.error("API request timed out after 60 seconds.")
         return None
     except requests.ConnectionError:
         logging.error("API connection error. Check your internet connection.")
@@ -150,7 +150,7 @@ def fetch_and_store_data() -> None:
         for sell_offer in sell_offers:
             if sell_offer.get('currency') == 'RUB' and sell_offer.get('source') != 'fleaMarket':
                 price = sell_offer.get('price', 0)
-                if price > best_trader_price:
+                if price is not None and price > best_trader_price:
                     best_trader_price = price
                     best_trader_name = sell_offer.get('source')
         
@@ -161,11 +161,11 @@ def fetch_and_store_data() -> None:
         for buy_offer in buy_offers:
             if buy_offer.get('currency') == 'RUB' and buy_offer.get('source') == 'fleaMarket':
                 price = buy_offer.get('price', 0)
-                if price < best_flea_price:
+                if price is not None and price < best_flea_price:
                     best_flea_price = price
         
         # If we found valid prices for both
-        if best_trader_price > 0 and best_flea_price != float('inf'):
+        if best_trader_price > 0 and best_flea_price != float('inf') and best_flea_price > 0:
             profit = best_trader_price - best_flea_price
             
             # Add to batch

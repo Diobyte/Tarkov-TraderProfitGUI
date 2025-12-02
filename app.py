@@ -74,7 +74,7 @@ def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
             if psutil.pid_exists(pid):
                 p = psutil.Process(pid)
                 # Verify it's actually python
-                if "python" in p.name().lower():
+                if "python" in p.name().lower() or "collector" in p.name().lower():
                     return True, pid, "standalone"
         except (OSError, ValueError, psutil.NoSuchProcess):
             pass # Fall through to check normal PID
@@ -86,7 +86,7 @@ def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
             
             if psutil.pid_exists(pid):
                 p = psutil.Process(pid)
-                if "python" in p.name().lower():
+                if "python" in p.name().lower() or "collector" in p.name().lower():
                     return True, pid, "session"
         except (OSError, ValueError, psutil.NoSuchProcess):
             # Process dead or file corrupt
@@ -194,10 +194,12 @@ def load_data(trend_hours: int = 168) -> pd.DataFrame:
         df = pd.DataFrame(data, columns=['item_id', 'name', 'flea_price', 'trader_price', 'trader_name', 'profit', 'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category'])
         
         # 2. Get Historical Trends
+        trend_df = pd.DataFrame()
         try:
             trends = database.get_market_trends(hours=trend_hours)
             if trends:
                 trend_df = pd.DataFrame(trends, columns=['item_id', 'trend_avg_profit', 'trend_min_profit', 'trend_max_profit', 'data_points'])
+                
                 # Merge trends into main dataframe
                 df = pd.merge(df, trend_df, on='item_id', how='left')
                 
@@ -487,12 +489,15 @@ def render_visual_analysis():
     # Let's reload full data for clustering to be accurate.
     try:
         df = load_data(trend_hours=trend_window_hours)
-        # Recalculate metrics for full df
-        df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
-        df['slots'] = df['width'] * df['height']
-        df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
-        df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
-        df['discount_percent'] = df.apply(lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, axis=1)
+        if df.empty:
+            df = filtered_df
+        else:
+            # Recalculate metrics for full df
+            df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
+            df['slots'] = df['width'] * df['height']
+            df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
+            df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
+            df['discount_percent'] = df.apply(lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, axis=1)
     except:
         df = filtered_df
 

@@ -111,10 +111,19 @@ def save_prices_batch(items: List[Tuple]) -> None:
     # Prepare the data for executemany
     # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
     
+    # Convert datetime objects to string to ensure consistency
+    processed_items = []
+    for item in items:
+        item_list = list(item)
+        # timestamp is at index 2
+        if isinstance(item_list[2], datetime):
+            item_list[2] = item_list[2].isoformat()
+        processed_items.append(tuple(item_list))
+
     c.executemany('''
         INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', items)
+    ''', processed_items)
     
     conn.commit()
     conn.close()
@@ -235,6 +244,7 @@ def get_latest_timestamp() -> Optional[datetime]:
         
         # Try common formats
         formats = [
+            '%Y-%m-%dT%H:%M:%S.%f', # ISO format with T
             '%Y-%m-%d %H:%M:%S.%f',
             '%Y-%m-%d %H:%M:%S',
             '%Y-%m-%d %H:%M'
