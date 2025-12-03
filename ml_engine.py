@@ -19,8 +19,12 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.linear_model import Ridge
+import warnings
 import logging
 from datetime import datetime, timedelta
+
+# Suppress sklearn convergence warnings that are expected with small datasets
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 
 import config
 from model_persistence import get_model_persistence, ModelPersistence
@@ -1019,12 +1023,19 @@ class TarkovMLEngine:
         # Ensure sorted by timestamp
         df = history_df.sort_values('timestamp').copy()
         
+        # Check for required columns
+        if 'profit' not in df.columns:
+            logger.warning("predict_profit_trend called without 'profit' column")
+            return {'predictions': [], 'confidence': 0, 'trend': 'unknown', 'recent_avg': 0, 'volatility': 0}
+        
         # Simple moving averages
         df['sma_short'] = df['profit'].rolling(window=3, min_periods=1).mean()
         df['sma_long'] = df['profit'].rolling(window=6, min_periods=1).mean()
         
-        # Trend detection
+        # Trend detection - handle NaN from diff()
         recent_trend = df['profit'].tail(5).diff().mean()
+        if pd.isna(recent_trend):
+            recent_trend = 0
         
         if recent_trend > 0:
             trend = 'increasing'
@@ -1035,7 +1046,7 @@ class TarkovMLEngine:
         
         # Simple linear projection
         X = np.arange(len(df)).reshape(-1, 1)
-        y = np.array(df['profit'].values)  # Ensure numpy array type
+        y = np.array(df['profit'].values, dtype=np.float64)  # Ensure numpy array type with explicit dtype
         
         model = Ridge(alpha=1.0)
         model.fit(X, y)
@@ -1048,6 +1059,9 @@ class TarkovMLEngine:
         train_score = model.score(X, y)
         profit_mean = df['profit'].mean()
         profit_std = df['profit'].std()
+        # Handle NaN from std() on single-element series
+        if pd.isna(profit_std):
+            profit_std = 0
         # Avoid division by zero when mean is -1 or close to it
         volatility = float(profit_std / max(abs(profit_mean) + 1, 1))
         confidence = max(0.0, min(100.0, float(train_score) * 100 * (1 - min(volatility, 1.0))))

@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "sessions": [
+    {
+      "timestamp": "2025-12-02T19:50:45.084793",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69930.38783741856,
+      "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T19:55:52.549712",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69874.45175302513,
+      "accuracy": null
+    }
+  ],
+  "daily_summaries": [],
+  "category_trends": {},
+  "accuracy_history": [],
+  "total_items_seen": 6446,
+  "total_profitable_items": 36
+}

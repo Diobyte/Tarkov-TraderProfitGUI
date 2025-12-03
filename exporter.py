@@ -120,11 +120,17 @@ class DataExporter:
             filename = self._generate_filename(prefix, "xlsx")
         
         try:
-            df.to_excel(filename, index=False, sheet_name=sheet_name, engine='openpyxl')
+            # Limit sheet name to 31 characters (Excel limit)
+            safe_sheet_name = sheet_name[:31] if len(sheet_name) > 31 else sheet_name
+            df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
             logger.info(f"Exported {len(df)} rows to {filename}")
         except ImportError:
             # Fallback to CSV if openpyxl not installed
             logger.warning("openpyxl not installed, falling back to CSV")
+            filename = filename.replace('.xlsx', '.csv')
+            df.to_csv(filename, index=False, encoding='utf-8')
+        except Exception as e:
+            logger.error(f"Excel export failed: {e}, falling back to CSV")
             filename = filename.replace('.xlsx', '.csv')
             df.to_csv(filename, index=False, encoding='utf-8')
         

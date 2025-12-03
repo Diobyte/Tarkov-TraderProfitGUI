@@ -8,28 +8,39 @@ __all__ = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
 def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculates derived metrics for the prices dataframe.
-    Modifies the dataframe in-place.
+    
+    Note: Creates a copy to avoid SettingWithCopyWarning.
+    
+    Args:
+        df: DataFrame with price data including profit, flea_price, width, height, etc.
+        
+    Returns:
+        DataFrame with added calculated metrics (roi, slots, profit_per_slot, etc.).
     """
     if df.empty:
         return df
+    
+    # Create a copy to avoid SettingWithCopyWarning
+    df = df.copy()
 
     # ROI - Return on Investment (Profit / Cost * 100)
-    # Avoid division by zero
-    df['roi'] = df.apply(lambda x: (x['profit'] / x['flea_price'] * 100) if x['flea_price'] > 0 else 0, axis=1)
+    # Avoid division by zero using vectorized operations (faster than apply)
+    df['roi'] = df['profit'] / df['flea_price'].replace(0, float('inf')) * 100
+    df.loc[df['flea_price'] == 0, 'roi'] = 0
     
-    # Slots & Profit per Slot
+    # Slots & Profit per Slot (vectorized for performance)
     df['slots'] = df['width'] * df['height']
-    df['profit_per_slot'] = df.apply(lambda x: x['profit'] / x['slots'] if x['slots'] > 0 else 0, axis=1)
+    df['profit_per_slot'] = df['profit'] / df['slots'].replace(0, float('inf'))
+    df.loc[df['slots'] == 0, 'profit_per_slot'] = 0
     
     # Discount from Average (how much below avg 24h price we're buying)
     df['discount_from_avg'] = df['avg_24h_price'] - df['flea_price']
-    df['discount_percent'] = df.apply(
-        lambda x: (x['discount_from_avg'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0, 
-        axis=1
-    )
+    df['discount_percent'] = df['discount_from_avg'] / df['avg_24h_price'].replace(0, float('inf')) * 100
+    df.loc[df['avg_24h_price'] == 0, 'discount_percent'] = 0
     
     # Profit per Kg (useful for weight-limited runs)
-    df['profit_per_kg'] = df.apply(lambda x: x['profit'] / x['weight'] if x['weight'] > 0 else 0, axis=1)
+    df['profit_per_kg'] = df['profit'] / df['weight'].replace(0, float('inf'))
+    df.loc[df['weight'] == 0, 'profit_per_kg'] = 0
     
     # --- Enhanced Metrics (v2) ---
     
@@ -37,19 +48,15 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     # Lower ratio = potentially undervalued on flea
     if 'base_price' in df.columns:
         df['base_price'] = df['base_price'].fillna(0)
-        df['flea_to_base_ratio'] = df.apply(
-            lambda x: (x['flea_price'] / x['base_price']) if x['base_price'] > 0 else 0, 
-            axis=1
-        )
+        df['flea_to_base_ratio'] = df['flea_price'] / df['base_price'].replace(0, float('inf'))
+        df.loc[df['base_price'] == 0, 'flea_to_base_ratio'] = 0
     
     # Price Range (24h High - Low) - Market volatility indicator
     if 'high_24h_price' in df.columns:
         df['high_24h_price'] = df['high_24h_price'].fillna(0)
         df['price_range_24h'] = df['high_24h_price'] - df['low_24h_price']
-        df['price_range_percent'] = df.apply(
-            lambda x: (x['price_range_24h'] / x['avg_24h_price'] * 100) if x['avg_24h_price'] > 0 else 0,
-            axis=1
-        )
+        df['price_range_percent'] = df['price_range_24h'] / df['avg_24h_price'].replace(0, float('inf')) * 100
+        df.loc[df['avg_24h_price'] == 0, 'price_range_percent'] = 0
     
     # Liquidity indicator (offer count normalized)
     if 'last_offer_count' in df.columns:

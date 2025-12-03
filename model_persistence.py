@@ -159,6 +159,9 @@ class ModelPersistence:
             category: Item category
             trader: Best trader name
         """
+        if not item_id:  # Skip empty item IDs
+            return
+            
         if item_id not in self._state['item_statistics']:
             self._state['item_statistics'][item_id] = {
                 'count': 0,

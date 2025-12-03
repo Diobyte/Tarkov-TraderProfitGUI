@@ -31,27 +31,40 @@ logging.basicConfig(
 )
 
 def handle_exit(signum: int, frame: Optional[FrameType]) -> None:
+    """Handle termination signals gracefully."""
     logging.info(f"Collector stopped by signal {signum}.")
     sys.exit(0)
 
 # Register signal handlers
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
+if sys.platform != 'win32':
+    # SIGHUP is not available on Windows
+    signal.signal(signal.SIGHUP, handle_exit)  # type: ignore[attr-defined]
+
+# Session singleton for connection reuse
+_session: Optional[requests.Session] = None
 
 def get_session() -> requests.Session:
-    session = requests.Session()
-    retry = Retry(
-        total=5,
-        connect=3,
-        read=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
+    """Get or create a session with retry configuration.
+    
+    Returns a singleton session to enable connection pooling and reuse.
+    """
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        retry = Retry(
+            total=5,
+            connect=3,
+            read=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+        )
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+        _session.mount('http://', adapter)
+        _session.mount('https://', adapter)
+    return _session
 
 def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     headers = {"Content-Type": "application/json"}

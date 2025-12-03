@@ -236,9 +236,17 @@ def save_prices_batch(items: List[Tuple]) -> None:
     
     Args:
         items: List of tuples matching the database schema (15 or 25 columns).
+        
+    Raises:
+        ValueError: If items list contains tuples of inconsistent lengths.
     """
     if not items:
         return
+    
+    # Validate consistent tuple lengths
+    first_len = len(items[0])
+    if not all(len(item) == first_len for item in items):
+        raise ValueError("All items must have the same number of columns")
         
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()

@@ -5,6 +5,12 @@ This module provides price alert functionality to notify users when
 items reach profitable thresholds or unusual market conditions occur.
 """
 
+"""Alert System for Tarkov Trader Profit Analysis.
+
+This module provides price alert functionality to notify users when
+items reach profitable thresholds or unusual market conditions occur.
+"""
+
 import json
 import os
 import logging

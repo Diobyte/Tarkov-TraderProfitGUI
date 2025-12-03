@@ -244,7 +244,9 @@ def get_database_stats() -> dict:
     return stats
 
 def read_log_file(log_file: str, max_lines: int = config.LOG_MAX_LINES) -> str:
-    """Read the last N lines from a log file.
+    """Read the last N lines from a log file efficiently.
+    
+    Uses a deque for memory-efficient reading of large log files.
     
     Args:
         log_file: Path to the log file to read.
@@ -253,15 +255,19 @@ def read_log_file(log_file: str, max_lines: int = config.LOG_MAX_LINES) -> str:
     Returns:
         String containing the last max_lines of the log file, reversed.
     """
+    from collections import deque
+    
     if not os.path.exists(log_file):
         return f"Log file not found: {log_file}"
     
     try:
+        # Use deque for memory-efficient tail reading
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-            lines = f.readlines()
-            # Return last max_lines, reversed so newest is first
-            recent_lines = lines[-max_lines:]
+            recent_lines = deque(f, maxlen=max_lines)
+            # Return reversed so newest is first
             return ''.join(reversed(recent_lines))
+    except PermissionError:
+        return f"Permission denied: {log_file}"
     except Exception as e:
         return f"Error reading log: {e}"
 
@@ -478,7 +484,7 @@ st.markdown("""
 # =============================================================================
 # DATA LOADING
 # =============================================================================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=config.STREAMLIT_CACHE_TTL_SECONDS)
 def load_data() -> pd.DataFrame:
     """Load and process market data from the database.
     

@@ -1,44 +1,71 @@
 # config.py
-"""Configuration constants for Tarkov Trader Profit application."""
+"""Configuration constants for Tarkov Trader Profit application.
 
+All configuration values can be overridden via environment variables
+using the pattern TARKOV_{CONSTANT_NAME}.
+"""
+
+import os
 from typing import Dict
 
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer value from environment variable or use default."""
+    try:
+        return int(os.environ.get(f'TARKOV_{key}', default))
+    except ValueError:
+        return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float value from environment variable or use default."""
+    try:
+        return float(os.environ.get(f'TARKOV_{key}', default))
+    except ValueError:
+        return default
+
+
+def _get_env_str(key: str, default: str) -> str:
+    """Get string value from environment variable or use default."""
+    return os.environ.get(f'TARKOV_{key}', default)
+
+
 # API Configuration
-API_URL: str = 'https://api.tarkov.dev/graphql'
-COLLECTION_INTERVAL_MINUTES: int = 5
-DATA_RETENTION_DAYS: int = 7
-API_TIMEOUT_SECONDS: int = 30
+API_URL: str = _get_env_str('API_URL', 'https://api.tarkov.dev/graphql')
+COLLECTION_INTERVAL_MINUTES: int = _get_env_int('COLLECTION_INTERVAL_MINUTES', 5)
+DATA_RETENTION_DAYS: int = _get_env_int('DATA_RETENTION_DAYS', 7)
+API_TIMEOUT_SECONDS: int = _get_env_int('API_TIMEOUT_SECONDS', 30)
 
 # Database Configuration
-DB_LOOKBACK_WINDOW_MINUTES: int = 45  # Window for fetching "latest" prices
-LIQUIDITY_NORMALIZATION_THRESHOLD: int = 50  # Offer count considered "high liquidity"
-MAX_LIQUIDITY_SCORE: int = 100  # Maximum liquidity score
+DB_LOOKBACK_WINDOW_MINUTES: int = _get_env_int('DB_LOOKBACK_WINDOW_MINUTES', 45)
+LIQUIDITY_NORMALIZATION_THRESHOLD: int = _get_env_int('LIQUIDITY_NORMALIZATION_THRESHOLD', 50)
+MAX_LIQUIDITY_SCORE: int = _get_env_int('MAX_LIQUIDITY_SCORE', 100)
 
 # Cache Configuration
-STREAMLIT_CACHE_TTL_SECONDS: int = 60  # How long to cache data in Streamlit
-LOG_MAX_LINES: int = 100  # Maximum lines to display from log files
+STREAMLIT_CACHE_TTL_SECONDS: int = _get_env_int('STREAMLIT_CACHE_TTL_SECONDS', 60)
+LOG_MAX_LINES: int = _get_env_int('LOG_MAX_LINES', 100)
 
 # ML Engine Configuration
-ML_ANOMALY_CONTAMINATION: float = 0.05  # Fraction of outliers for anomaly detection
-ML_ESTIMATORS: int = 100  # Number of estimators for ensemble models
-ML_MIN_ITEMS_FOR_ANALYSIS: int = 10  # Minimum items required for ML analysis
-ML_MIN_ITEMS_FOR_ANOMALY: int = 20  # Minimum items for anomaly detection
+ML_ANOMALY_CONTAMINATION: float = _get_env_float('ML_ANOMALY_CONTAMINATION', 0.05)
+ML_ESTIMATORS: int = _get_env_int('ML_ESTIMATORS', 100)
+ML_MIN_ITEMS_FOR_ANALYSIS: int = _get_env_int('ML_MIN_ITEMS_FOR_ANALYSIS', 10)
+ML_MIN_ITEMS_FOR_ANOMALY: int = _get_env_int('ML_MIN_ITEMS_FOR_ANOMALY', 20)
 
 # Trend Learning Configuration
-TREND_LOOKBACK_HOURS: int = 24  # Hours of history to analyze for trends
-TREND_MIN_DATA_POINTS: int = 6  # Minimum data points for valid trend
-TREND_PROFIT_MOMENTUM_WEIGHT: float = 0.20  # Weight of profit trend in scoring
-TREND_VOLATILITY_PENALTY: float = 0.15  # Penalty factor for high volatility items
-TREND_CONSISTENCY_BONUS: float = 0.25  # Bonus for consistently profitable items
-TREND_IMPROVEMENT_THRESHOLD: float = 0.05  # 5% improvement = positive trend
+TREND_LOOKBACK_HOURS: int = _get_env_int('TREND_LOOKBACK_HOURS', 24)
+TREND_MIN_DATA_POINTS: int = _get_env_int('TREND_MIN_DATA_POINTS', 6)
+TREND_PROFIT_MOMENTUM_WEIGHT: float = _get_env_float('TREND_PROFIT_MOMENTUM_WEIGHT', 0.20)
+TREND_VOLATILITY_PENALTY: float = _get_env_float('TREND_VOLATILITY_PENALTY', 0.15)
+TREND_CONSISTENCY_BONUS: float = _get_env_float('TREND_CONSISTENCY_BONUS', 0.25)
+TREND_IMPROVEMENT_THRESHOLD: float = _get_env_float('TREND_IMPROVEMENT_THRESHOLD', 0.05)
 
 # Volume/Offers Thresholds
-VOLUME_MIN_FOR_RECOMMENDATION: int = 5  # Minimum offers required to recommend
-VOLUME_LOW_THRESHOLD: int = 10  # Below this = low volume/hard to buy
-VOLUME_MEDIUM_THRESHOLD: int = 50  # Below this = medium volume
-VOLUME_HIGH_THRESHOLD: int = 100  # Above this = high volume/saturated
-VOLUME_VERY_HIGH_THRESHOLD: int = 200  # Above this = very high volume
-VOLUME_WEIGHT_IN_SCORE: float = 0.15  # Weight of volume in opportunity scoring
+VOLUME_MIN_FOR_RECOMMENDATION: int = _get_env_int('VOLUME_MIN_FOR_RECOMMENDATION', 5)
+VOLUME_LOW_THRESHOLD: int = _get_env_int('VOLUME_LOW_THRESHOLD', 10)
+VOLUME_MEDIUM_THRESHOLD: int = _get_env_int('VOLUME_MEDIUM_THRESHOLD', 50)
+VOLUME_HIGH_THRESHOLD: int = _get_env_int('VOLUME_HIGH_THRESHOLD', 100)
+VOLUME_VERY_HIGH_THRESHOLD: int = _get_env_int('VOLUME_VERY_HIGH_THRESHOLD', 200)
+VOLUME_WEIGHT_IN_SCORE: float = _get_env_float('VOLUME_WEIGHT_IN_SCORE', 0.15)
 
 # Flea Market Level Requirements (Based on Patch 0.15+ changes)
 CATEGORY_LOCKS: Dict[str, int] = {
@@ -74,26 +101,26 @@ ITEM_LOCKS: Dict[str, int] = {
 }
 
 # Alert Configuration
-ALERT_DEFAULT_COOLDOWN_MINUTES: int = 30  # Cooldown between alert triggers
-ALERT_HIGH_PROFIT_THRESHOLD: int = 10000  # Threshold for high profit alerts
-ALERT_HIGH_ROI_THRESHOLD: float = 50.0  # Threshold for high ROI alerts
-ALERT_MAX_HISTORY: int = 500  # Maximum alert history entries
+ALERT_DEFAULT_COOLDOWN_MINUTES: int = _get_env_int('ALERT_DEFAULT_COOLDOWN_MINUTES', 30)
+ALERT_HIGH_PROFIT_THRESHOLD: int = _get_env_int('ALERT_HIGH_PROFIT_THRESHOLD', 10000)
+ALERT_HIGH_ROI_THRESHOLD: float = _get_env_float('ALERT_HIGH_ROI_THRESHOLD', 50.0)
+ALERT_MAX_HISTORY: int = _get_env_int('ALERT_MAX_HISTORY', 500)
 
 # Export Configuration
-EXPORT_MAX_ROWS: int = 1000  # Maximum rows to export at once
-EXPORT_CLEANUP_DAYS: int = 7  # Delete exports older than this
+EXPORT_MAX_ROWS: int = _get_env_int('EXPORT_MAX_ROWS', 1000)
+EXPORT_CLEANUP_DAYS: int = _get_env_int('EXPORT_CLEANUP_DAYS', 7)
 
 # Performance Configuration
-DATABASE_CONNECTION_TIMEOUT: int = 30  # Database connection timeout in seconds
-DATABASE_RETRY_ATTEMPTS: int = 5  # Number of retry attempts for DB operations
-DATABASE_RETRY_DELAY: float = 1.0  # Delay between retries in seconds
+DATABASE_CONNECTION_TIMEOUT: int = _get_env_int('DATABASE_CONNECTION_TIMEOUT', 30)
+DATABASE_RETRY_ATTEMPTS: int = _get_env_int('DATABASE_RETRY_ATTEMPTS', 5)
+DATABASE_RETRY_DELAY: float = _get_env_float('DATABASE_RETRY_DELAY', 1.0)
 
 # UI Configuration
-UI_REFRESH_INTERVAL_SECONDS: int = 60  # Auto-refresh interval
-UI_MAX_TABLE_ROWS: int = 100  # Maximum rows in data tables
-UI_CHART_HEIGHT: int = 400  # Default chart height in pixels
+UI_REFRESH_INTERVAL_SECONDS: int = _get_env_int('UI_REFRESH_INTERVAL_SECONDS', 60)
+UI_MAX_TABLE_ROWS: int = _get_env_int('UI_MAX_TABLE_ROWS', 100)
+UI_CHART_HEIGHT: int = _get_env_int('UI_CHART_HEIGHT', 400)
 
 # Data Quality Configuration
-MIN_PROFIT_FOR_DISPLAY: int = 0  # Minimum profit to show item
-MIN_OFFERS_FOR_RELIABLE: int = 5  # Minimum offers for reliable data
-MAX_PRICE_AGE_HOURS: int = 1  # Maximum age of price data to consider fresh
+MIN_PROFIT_FOR_DISPLAY: int = _get_env_int('MIN_PROFIT_FOR_DISPLAY', 0)
+MIN_OFFERS_FOR_RELIABLE: int = _get_env_int('MIN_OFFERS_FOR_RELIABLE', 5)
+MAX_PRICE_AGE_HOURS: int = _get_env_int('MAX_PRICE_AGE_HOURS', 1)
