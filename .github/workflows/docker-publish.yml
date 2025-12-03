@@ -4,9 +4,32 @@ on:
   push:
     branches: ["main"]
     tags: ["v*.*.*"]
+    paths:
+      # Only trigger on changes to application code, not docs/workflows
+      - "*.py"
+      - "api/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "docker-entrypoint.sh"
+      - "docker-compose.yml"
+      - ".streamlit/**"
+      - "VERSION"
+      - "data/**"
   pull_request:
     branches: ["main"]
+    paths:
+      - "*.py"
+      - "api/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "docker-entrypoint.sh"
   workflow_dispatch:
+    inputs:
+      force_push:
+        description: 'Force push image even without code changes'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -19,7 +42,29 @@ permissions:
   attestations: write
 
 jobs:
+  # First run tests to ensure code quality
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+          
+      - name: Run tests
+        run: pytest -v
+
   build-and-push:
+    needs: test  # Only build if tests pass
     runs-on: ubuntu-latest
 
     steps:
@@ -32,6 +77,9 @@ jobs:
           VERSION=$(cat VERSION | tr -d '\n\r')
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Building version: ${VERSION}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -73,6 +121,8 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             VCS_REF=${{ github.sha }}
+          provenance: true
+          sbom: true
 
       - name: Generate artifact attestation
         if: github.event_name != 'pull_request'
@@ -81,3 +131,16 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build-push.outputs.digest }}
           push-to-registry: true
+
+      - name: Image Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## Docker Image Published 🐳" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** ${{ steps.build-push.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

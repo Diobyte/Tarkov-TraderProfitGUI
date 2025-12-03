@@ -1,5 +1,5 @@
 """
-🎮 Tarkov Trader Profit Dashboard v3.0
+🎮 Tarkov Trader Profit Dashboard
 The ultimate flea-to-trader arbitrage finder for Escape from Tarkov.
 """
 
@@ -8,6 +8,7 @@ import pandas as pd
 import database
 import utils
 import config
+import version
 from ml_engine import get_ml_engine
 import time
 import subprocess
@@ -326,6 +327,13 @@ def get_log_files() -> list:
                 pass
     
     return sorted(log_files, key=lambda x: x['modified'], reverse=True)
+
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def check_for_updates_cached() -> Optional[dict]:
+    """Check for updates with caching to avoid API spam."""
+    return version.check_for_updates()
+
 
 # =============================================================================
 # PAGE CONFIG & CUSTOM CSS
@@ -2507,6 +2515,15 @@ def render_sidebar() -> dict:
                     if start_collector():
                         st.rerun()
         
+        # Version info at bottom of sidebar
+        st.markdown("---")
+        st.caption(f"📦 {version.get_version_display()}")
+        
+        # Check for updates (cached to avoid API spam)
+        update_info = check_for_updates_cached()
+        if update_info and update_info.get("update_available"):
+            st.warning(f"🆕 Update available: v{update_info['latest_version']}")
+        
         return {
             'min_profit': min_profit,
             'min_roi': min_roi,
@@ -2571,7 +2588,7 @@ def main() -> None:
     
     # Footer
     st.markdown("---")
-    st.caption("💡 Data from tarkov.dev API • Updated every 5 minutes • Not affiliated with Battlestate Games")
+    st.caption(f"💡 Data from tarkov.dev API • Updated every 5 minutes • {version.get_version_display()} • Not affiliated with Battlestate Games")
 
 if __name__ == "__main__":
     main()

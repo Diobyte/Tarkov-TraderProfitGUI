@@ -23,6 +23,7 @@ from strawberry.fastapi import GraphQLRouter
 from api.schema import schema
 import database
 import config
+import version
 
 # Configure logging
 log_file = os.path.join(config.LOGS_DIR, "api.log")
@@ -53,7 +54,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tarkov Trader Profit API",
     description="GraphQL API for Tarkov market data and trading analysis",
-    version="1.0.0",
+    version=version.get_current_version(),
     lifespan=lifespan,
 )
 
@@ -78,7 +79,7 @@ async def root():
     """Root endpoint with API information."""
     return {
         "name": "Tarkov Trader Profit API",
-        "version": "1.0.0",
+        "version": version.get_current_version(),
         "endpoints": {
             "graphql": "/graphql",
             "graphql_playground": "/graphql (GET in browser)",

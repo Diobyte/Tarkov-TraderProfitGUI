@@ -1,6 +1,9 @@
 # Docker Compose for Tarkov Trader Profit GUI
 # Pulls pre-built images from GitHub Container Registry
 # Usage: docker compose up -d
+#
+# For single-container mode (all services in one): docker run ghcr.io/diobyte/tarkov-traderprofitgui:latest
+# For multi-container mode (recommended for production): docker compose up -d
 
 services:
   # =============================================================================
@@ -11,6 +14,7 @@ services:
     container_name: tarkov-collector
     restart: unless-stopped
     command: ["python", "-u", "collector.py", "--standalone"]
+    init: true  # Use tini for proper signal handling
     volumes:
       - tarkov-data:/data
     environment:
@@ -25,6 +29,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # Streamlit Dashboard Service
@@ -34,6 +43,7 @@ services:
     container_name: tarkov-dashboard
     restart: unless-stopped
     command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    init: true
     ports:
       - "8501:8501"
     volumes:
@@ -55,6 +65,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # GraphQL API Service
@@ -64,6 +79,7 @@ services:
     container_name: tarkov-api
     restart: unless-stopped
     command: ["python", "-u", "api/server.py"]
+    init: true
     ports:
       - "4000:4000"
     volumes:
@@ -83,16 +99,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # =============================================================================
-# Volumes
+# Volumes - Persistent storage for data
 # =============================================================================
 volumes:
   tarkov-data:
     driver: local
 
 # =============================================================================
-# Networks
+# Networks - Isolated network for services
 # =============================================================================
 networks:
   tarkov-net:

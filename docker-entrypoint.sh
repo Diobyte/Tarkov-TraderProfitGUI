@@ -1,11 +1,40 @@
 #!/bin/bash
 # Docker entrypoint script for Tarkov Trader Profit GUI
-# Runs all services in a single container
+# Runs all services in a single container with proper signal handling
+# Note: This script is invoked via tini for proper PID 1 behavior
 
 set -e
 
+# Graceful shutdown handler
+cleanup() {
+    echo ""
+    echo "[Shutdown] Stopping services..."
+    
+    # Kill background processes gracefully
+    if [ -n "$COLLECTOR_PID" ] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
+        kill -TERM "$COLLECTOR_PID" 2>/dev/null || true
+        wait "$COLLECTOR_PID" 2>/dev/null || true
+        echo "  Collector stopped"
+    fi
+    
+    if [ -n "$API_PID" ] && kill -0 "$API_PID" 2>/dev/null; then
+        kill -TERM "$API_PID" 2>/dev/null || true
+        wait "$API_PID" 2>/dev/null || true
+        echo "  API stopped"
+    fi
+    
+    echo "[Shutdown] Complete"
+    exit 0
+}
+
+# Trap signals for graceful shutdown
+trap cleanup SIGTERM SIGINT SIGQUIT
+
+# Read version info
+VERSION=$(cat /app/.version 2>/dev/null || echo "unknown")
+
 echo "=========================================="
-echo "  Tarkov Trader Profit GUI - Starting"
+echo "  Tarkov Trader Profit GUI v${VERSION}"
 echo "=========================================="
 
 # Create data directories if they don't exist
@@ -48,5 +77,6 @@ echo "  GraphQL:   http://localhost:4000/graphql"
 echo "=========================================="
 echo ""
 
-# Start Streamlit dashboard in the foreground (keeps container alive)
+# Start Streamlit dashboard in the foreground
+# Using exec to replace shell process (proper signal handling)
 exec streamlit run app.py --server.address=0.0.0.0 --server.port=8501
