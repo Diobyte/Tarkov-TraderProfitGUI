@@ -51,7 +51,7 @@ LABEL org.opencontainers.image.title="Tarkov Trader Profit GUI" \
     org.opencontainers.image.documentation="https://github.com/Diobyte/Tarkov-TraderProfitGUI#readme" \
     org.opencontainers.image.vendor="Diobyte" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.base.name="docker.io/library/python:3.12-slim"
+    org.opencontainers.image.base.name="docker.io/library/python:3.14-slim"
 
 # ==============================================================================
 # Environment Variables (LinuxServer.io style)
@@ -85,7 +85,7 @@ ENV PUID=1000 \
     API_HOST=0.0.0.0 \
     API_PORT=4000 \
     # Python path for installed packages
-    PYTHONPATH=/usr/local/lib/python3.12/site-packages
+    PYTHONPATH=/usr/local/lib/python3.14/site-packages
 
 # Install runtime dependencies
 RUN apt-get update \
