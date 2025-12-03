@@ -1805,11 +1805,14 @@ def render_analytics(df: pd.DataFrame) -> None:
         if top_learned:
             trend_df = pd.DataFrame(top_learned)
             
+            # Use item_name for display, fallback to item_id if not available
+            display_col = 'item_name' if 'item_name' in trend_df.columns else 'item_id'
+            
             # Display top learned items - consistency score is 0-100
             fig = px.bar(
                 trend_df.head(15),
                 x='profit_mean',
-                y='item_id',
+                y=display_col,
                 orientation='h',
                 color='consistency_score',
                 color_continuous_scale='RdYlGn',
@@ -1823,7 +1826,7 @@ def render_analytics(df: pd.DataFrame) -> None:
                 plot_bgcolor='rgba(0,0,0,0)',
                 font_color=COLORS['text'],
                 height=450,
-                yaxis={'categoryorder': 'total ascending'},
+                yaxis={'categoryorder': 'total ascending', 'title': 'Item'},
                 coloraxis_colorbar_title='Consistency %'
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -1833,7 +1836,8 @@ def render_analytics(df: pd.DataFrame) -> None:
             st.dataframe(
                 trend_df,
                 column_config={
-                    "item_id": st.column_config.TextColumn("Item ID", width=200),
+                    "item_name": st.column_config.TextColumn("Item Name", width=200),
+                    "item_id": st.column_config.TextColumn("Item ID", width=150),
                     "profit_mean": st.column_config.NumberColumn("Avg Profit", format="₽%.0f"),
                     "consistency_score": st.column_config.ProgressColumn("Consistency", min_value=0, max_value=100),
                     "data_points": st.column_config.NumberColumn("Data Points"),

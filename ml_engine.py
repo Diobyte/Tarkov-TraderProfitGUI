@@ -525,6 +525,7 @@ class TarkovMLEngine:
             offers = row.get('last_offer_count', 0)
             category = row.get('category', 'Unknown')
             trader = row.get('trader_name', 'Unknown')
+            item_name = row.get('name', '')  # Get human-readable name
             
             self.persistence.update_item_statistics(
                 item_id=item_id,
@@ -532,7 +533,8 @@ class TarkovMLEngine:
                 flea_price=flea_price,
                 offers=int(offers),
                 category=category,
-                trader=trader
+                trader=trader,
+                item_name=item_name
             )
             
             # Update category and trader stats

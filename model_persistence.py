@@ -162,7 +162,8 @@ class ModelPersistence:
     
     def update_item_statistics(self, item_id: str, profit: float, 
                                flea_price: float, offers: int,
-                               category: str, trader: str) -> bool:
+                               category: str, trader: str,
+                               item_name: str = '') -> bool:
         """
         Update running statistics for an item.
         
@@ -177,6 +178,7 @@ class ModelPersistence:
             offers: Number of offers on flea market.
             category: Item category name.
             trader: Best trader name for this item.
+            item_name: Human-readable item name for display.
             
         Returns:
             True if statistics were updated, False if item_id was invalid.
@@ -191,9 +193,10 @@ class ModelPersistence:
         if not item_id:
             return False
         
-        # Sanitize category and trader
+        # Sanitize category, trader, and item_name
         category = str(category).strip() if category else 'Unknown'
         trader = str(trader).strip() if trader else 'Unknown'
+        item_name = str(item_name).strip() if item_name else ''
         if not category:
             category = 'Unknown'
         if not trader:
@@ -232,6 +235,7 @@ class ModelPersistence:
                 'offers_mean': 0.0,
                 'category': category,
                 'trader': trader,
+                'item_name': item_name,
                 'first_seen': datetime.now().isoformat(),
                 'last_seen': datetime.now().isoformat(),
                 'trend_direction': 'stable',
@@ -265,6 +269,9 @@ class ModelPersistence:
         stats['last_seen'] = datetime.now().isoformat()
         stats['category'] = category
         stats['trader'] = trader
+        # Update item_name if provided (allows backfilling old data)
+        if item_name:
+            stats['item_name'] = item_name
         
         # Calculate consistency (low variance = high consistency)
         if n >= 2:
@@ -564,6 +571,7 @@ class ModelPersistence:
             if stats['count'] >= config.TREND_MIN_DATA_POINTS:
                 items.append({
                     'item_id': item_id,
+                    'item_name': stats.get('item_name', item_id),  # Fallback to item_id for old data
                     'profit_mean': stats['profit_mean'],
                     'consistency_score': stats['consistency_score'],
                     'data_points': stats['count'],
