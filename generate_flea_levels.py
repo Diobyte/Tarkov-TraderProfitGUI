@@ -42,6 +42,9 @@ QUERY = """
         category {
             name
         }
+        handbookCategories {
+            name
+        }
         sellFor {
             vendor {
                 name
@@ -95,6 +98,18 @@ def process_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         types = item.get("types", [])
         category = item.get("category", {}).get("name", "Unknown") if item.get("category") else "Unknown"
         
+        # Extract handbook categories
+        handbook_categories = []
+        handbook_data = item.get("handbookCategories") or []
+        if isinstance(handbook_data, list):
+            for hc in handbook_data:
+                if isinstance(hc, dict) and hc.get("name"):
+                    handbook_categories.append(hc.get("name"))
+        
+        # Check for noFlea and markedOnly flags
+        no_flea = "noFlea" in types if types else False
+        marked_only = "markedOnly" in types if types else False
+        
         # Get best trader sell price
         best_trader = None
         best_price = 0
@@ -105,15 +120,18 @@ def process_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 best_price = price
                 best_trader = vendor
         
-        # Calculate flea level requirement
-        flea_level = get_flea_level_requirement(name, category)
+        # Calculate flea level requirement (pass handbook categories for better matching)
+        flea_level = get_flea_level_requirement(name, category, handbook_categories)
         
         processed.append({
             "item_id": item_id,
             "name": name,
             "short_name": short_name,
             "category": category,
+            "handbook_categories": ", ".join(handbook_categories) if handbook_categories else "",
             "types": ", ".join(types) if types else "",
+            "no_flea": no_flea,
+            "marked_only": marked_only,
             "base_price": base_price,
             "best_trader": best_trader or "None",
             "trader_price": best_price,

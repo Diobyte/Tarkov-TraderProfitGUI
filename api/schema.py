@@ -57,6 +57,10 @@ class Item:
     trader_level_required: Optional[int] = None
     flea_level_required: Optional[int] = None
     
+    # Item type flags (Patch 1.0+)
+    no_flea: Optional[bool] = None
+    marked_only: Optional[bool] = None
+    
     # Links
     icon_link: Optional[str] = None
     wiki_link: Optional[str] = None
@@ -133,7 +137,8 @@ def _get_latest_data() -> pd.DataFrame:
             'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price',
             'change_last_48h', 'weight', 'category', 'base_price', 'high_24h_price',
             'last_offer_count', 'short_name', 'wiki_link', 'trader_level_required',
-            'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score'
+            'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score',
+            'no_flea', 'marked_only'
         ]
         
         # Handle different data formats
@@ -171,6 +176,8 @@ def _row_to_item(row: pd.Series) -> Item:
         base_price=int(row.get('base_price', 0)) if pd.notna(row.get('base_price')) else None,
         trader_level_required=int(row.get('trader_level_required', 1)) if pd.notna(row.get('trader_level_required')) else None,
         flea_level_required=int(row.get('flea_level_required', 15)) if pd.notna(row.get('flea_level_required')) else None,
+        no_flea=bool(row.get('no_flea', 0)) if pd.notna(row.get('no_flea')) else None,
+        marked_only=bool(row.get('marked_only', 0)) if pd.notna(row.get('marked_only')) else None,
         icon_link=row.get('icon_link') if pd.notna(row.get('icon_link')) else None,
         wiki_link=row.get('wiki_link') if pd.notna(row.get('wiki_link')) else None,
         timestamp=str(row.get('timestamp', '')) if pd.notna(row.get('timestamp')) else None,

@@ -965,7 +965,7 @@ def render_data_table(df: pd.DataFrame) -> None:
     # Prepare display dataframe
     display_cols = ['icon_link', 'name', 'trend', 'profit', 'roi', 'flea_price', 
                    'trader_price', 'trader_name', 'trader_level_required', 'flea_level_required',
-                   'category', 'last_offer_count']
+                   'category', 'last_offer_count', 'no_flea', 'marked_only']
     
     # Add ML score if available
     if 'ml_opportunity_score' in ml_df.columns:
@@ -992,6 +992,8 @@ def render_data_table(df: pd.DataFrame) -> None:
         "flea_level_required": st.column_config.NumberColumn("Flea Lvl", format="%d", width=65, help="Player Level Required for Flea Market Access"),
         "category": st.column_config.TextColumn("Category", width=100),
         "last_offer_count": st.column_config.NumberColumn("Offers", width=65),
+        "no_flea": st.column_config.CheckboxColumn("🚫", width=40, help="Item banned from Flea Market"),
+        "marked_only": st.column_config.CheckboxColumn("🔑", width=40, help="Marked room only item"),
     }
     
     if 'ml_opportunity_score' in display_cols:
@@ -1113,7 +1115,7 @@ def render_market_explorer(df: pd.DataFrame) -> None:
         'icon_link', 'name', 'profit', 'roi', 'flea_price', 'trader_price',
         'trader_name', 'trader_level_required', 'flea_level_required', 'category', 
         'avg_24h_price', 'low_24h_price', 'high_24h_price',
-        'change_last_48h', 'last_offer_count', 'weight'
+        'change_last_48h', 'last_offer_count', 'weight', 'no_flea', 'marked_only'
     ]
     
     # Only include columns that exist
@@ -1138,6 +1140,8 @@ def render_market_explorer(df: pd.DataFrame) -> None:
             "change_last_48h": st.column_config.NumberColumn("48h Δ%", format="%.1f%%", width=70),
             "last_offer_count": st.column_config.NumberColumn("Offers", width=65),
             "weight": st.column_config.NumberColumn("Weight", format="%.2f kg", width=75),
+            "no_flea": st.column_config.CheckboxColumn("🚫", width=40, help="Item banned from Flea Market"),
+            "marked_only": st.column_config.CheckboxColumn("🔑", width=40, help="Marked room only item"),
         },
         hide_index=True,
         use_container_width=True,
@@ -1184,7 +1188,8 @@ def render_visual_analytics(df: pd.DataFrame) -> None:
         "🥧 Category Analysis",
         "📈 Trader Breakdown",
         "🌡️ Market Heatmap",
-        "📉 Trends & Patterns"
+        "📉 Trends & Patterns",
+        "🔒 Item Restrictions"
     ])
     
     # --- Price Distribution Tab ---
@@ -1639,6 +1644,113 @@ def render_visual_analytics(df: pd.DataFrame) -> None:
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No price change data available.")
+    
+    # --- Item Restrictions Tab ---
+    with viz_tabs[5]:
+        st.markdown("#### 🔒 Flea Market Restrictions Analysis")
+        st.caption("Overview of items with trading restrictions based on API data.")
+        
+        # Ensure columns exist
+        if 'no_flea' not in df.columns:
+            df['no_flea'] = 0
+        if 'marked_only' not in df.columns:
+            df['marked_only'] = 0
+        if 'flea_level_required' not in df.columns:
+            df['flea_level_required'] = 15
+        
+        col1, col2, col3 = st.columns(3)
+        
+        no_flea_count = int(df['no_flea'].sum()) if 'no_flea' in df.columns else 0
+        marked_only_count = int(df['marked_only'].sum()) if 'marked_only' in df.columns else 0
+        restricted_count = len(df[df['flea_level_required'] > 15]) if 'flea_level_required' in df.columns else 0
+        
+        with col1:
+            st.metric("🚫 No-Flea Items", no_flea_count, help="Items completely banned from flea market")
+        with col2:
+            st.metric("🔑 Marked-Only Items", marked_only_count, help="Items only found in marked rooms")
+        with col3:
+            st.metric("⏫ Level-Restricted Items", restricted_count, help="Items requiring player level > 15")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Flea level requirement distribution
+            if 'flea_level_required' in df.columns:
+                level_counts = df.groupby('flea_level_required').size().reset_index(name='count')
+                level_counts = level_counts.sort_values('flea_level_required')
+                
+                fig = px.bar(
+                    level_counts,
+                    x='flea_level_required',
+                    y='count',
+                    title='Items by Flea Level Requirement',
+                    template='plotly_dark',
+                    color='flea_level_required',
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color=COLORS['text'],
+                    coloraxis_showscale=False,
+                    xaxis_title="Required Player Level",
+                    yaxis_title="Number of Items",
+                    height=400
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Restriction type pie chart
+            restriction_data = pd.DataFrame({
+                'Type': ['Flea Allowed', 'No Flea', 'Marked Only'],
+                'Count': [
+                    len(df) - no_flea_count - marked_only_count,
+                    no_flea_count,
+                    marked_only_count
+                ]
+            })
+            restriction_data = restriction_data[restriction_data['Count'] > 0]
+            
+            if len(restriction_data) > 0:
+                fig = px.pie(
+                    restriction_data,
+                    values='Count',
+                    names='Type',
+                    title='Item Restriction Types',
+                    hole=0.4,
+                    template='plotly_dark',
+                    color_discrete_sequence=[COLORS['profit'], COLORS['loss'], '#FFD700']
+                )
+                fig.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color=COLORS['text'],
+                    height=400
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # Show restricted items table
+        st.markdown("#### 📋 Level-Restricted Items by Category")
+        
+        if 'flea_level_required' in df.columns:
+            restricted_df = df[df['flea_level_required'] > 15].copy()
+            if len(restricted_df) > 0:
+                # Group by category and level
+                cat_level = restricted_df.groupby(['category', 'flea_level_required']).size().reset_index(name='count')
+                cat_level = cat_level.sort_values(['flea_level_required', 'count'], ascending=[False, False])
+                
+                st.dataframe(
+                    cat_level,
+                    column_config={
+                        "category": st.column_config.TextColumn("Category", width=150),
+                        "flea_level_required": st.column_config.NumberColumn("Required Level", width=120),
+                        "count": st.column_config.NumberColumn("Items", width=80),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=300
+                )
+            else:
+                st.info("No level-restricted items in current filter.")
 
 # =============================================================================
 # ANALYTICS CHARTS

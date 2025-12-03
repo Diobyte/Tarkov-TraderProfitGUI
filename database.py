@@ -300,6 +300,24 @@ def init_db() -> None:
                 SET flea_level_required = ? 
                 WHERE category = ? AND flea_level_required != ?
             ''', (level, category, level))
+        
+        # Update flea_level_required based on ITEM_LOCKS (specific items override category)
+        # This handles items like "Graphics card" which have level 40 requirement
+        for item_name, level in config.ITEM_LOCKS.items():
+            # Use LIKE for substring matching on longer item names (5+ chars)
+            if len(item_name) >= 5:
+                c.execute('''
+                    UPDATE prices 
+                    SET flea_level_required = ? 
+                    WHERE name LIKE ? AND flea_level_required < ?
+                ''', (level, f'%{item_name}%', level))
+            else:
+                # Exact match for short names to avoid false positives
+                c.execute('''
+                    UPDATE prices 
+                    SET flea_level_required = ? 
+                    WHERE name = ? AND flea_level_required < ?
+                ''', (level, item_name, level))
 
         # Create indexes for performance
         c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp ON prices (timestamp)')

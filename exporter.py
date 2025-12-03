@@ -235,8 +235,8 @@ class DataExporter:
         # Select key columns for recommendations
         rec_columns = [
             'name', 'profit', 'roi', 'flea_price', 'trader_price',
-            'trader_name', 'category', 'last_offer_count',
-            'rec_score', 'rec_tier', 'risk_level'
+            'trader_name', 'category', 'flea_level_required', 'last_offer_count',
+            'no_flea', 'marked_only', 'rec_score', 'rec_tier', 'risk_level'
         ]
         
         # Only include columns that exist
