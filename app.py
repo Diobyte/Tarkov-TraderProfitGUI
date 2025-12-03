@@ -943,6 +943,25 @@ def render_data_table(df: pd.DataFrame) -> None:
         use_container_width=True,
         height=500
     )
+    
+    # Export options
+    export_col1, export_col2, export_col3 = st.columns([1, 1, 4])
+    with export_col1:
+        st.download_button(
+            "📥 Export CSV",
+            display_df.to_csv(index=False).encode('utf-8'),
+            "tarkov_top_trades.csv",
+            "text/csv",
+            use_container_width=True
+        )
+    with export_col2:
+        st.download_button(
+            "📥 Export JSON",
+            display_df.to_json(orient='records', indent=2),
+            "tarkov_top_trades.json",
+            "application/json",
+            use_container_width=True
+        )
 
 # =============================================================================
 # MARKET EXPLORER - FULL DATABASE WITH SELF-FILTERING
@@ -1062,14 +1081,24 @@ def render_market_explorer(df: pd.DataFrame) -> None:
         height=600
     )
     
-    # Export option
-    st.download_button(
-        "📥 Export to CSV",
-        explorer_df.to_csv(index=False).encode('utf-8'),
-        "tarkov_market_data.csv",
-        "text/csv",
-        use_container_width=False
-    )
+    # Export options
+    export_col1, export_col2, export_col3 = st.columns([1, 1, 4])
+    with export_col1:
+        st.download_button(
+            "📥 Export CSV",
+            explorer_df.to_csv(index=False).encode('utf-8'),
+            "tarkov_market_data.csv",
+            "text/csv",
+            use_container_width=True
+        )
+    with export_col2:
+        st.download_button(
+            "📥 Export JSON",
+            explorer_df.to_json(orient='records', indent=2),
+            "tarkov_market_data.json",
+            "application/json",
+            use_container_width=True
+        )
 
 # =============================================================================
 # VISUAL MARKET ANALYTICS

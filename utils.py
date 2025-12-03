@@ -1,5 +1,6 @@
 """Shared utility functions for Tarkov Trader Profit application."""
 
+import re
 import pandas as pd
 import numpy as np
 from typing import Optional, Union, List
@@ -36,21 +37,59 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
         >>> get_flea_level_requirement("Bandage", "Medical")
         15
     """
+    item_name_lower = item_name.lower()
+    
     # Check item-specific lock first (highest priority)
+    # Only match if the locked item name is a significant portion of the item name
+    # This prevents short strings like "M80" from matching unrelated items
     for locked_item, level in config.ITEM_LOCKS.items():
-        if locked_item.lower() in item_name.lower() or item_name.lower() in locked_item.lower():
+        locked_lower = locked_item.lower()
+        
+        # Exact match (case-insensitive)
+        if locked_lower == item_name_lower:
             return level
+        
+        # For longer locked item names (5+ chars), allow substring matching
+        # This handles cases like "Graphics card" matching "Graphics card (GPU)"
+        if len(locked_item) >= 5:
+            if locked_lower in item_name_lower:
+                return level
+        
+        # For short names, require word boundary matching or exact containment
+        # This prevents "M80" from matching "M80p" or other unrelated items
+        elif len(locked_item) >= 2:
+            # Check if it appears as a complete word (surrounded by spaces, punctuation, or start/end)
+            pattern = r'(?:^|[\s\-_.,()[\]])' + re.escape(locked_lower) + r'(?:$|[\s\-_.,()[\]])'
+            if re.search(pattern, item_name_lower):
+                return level
     
     # Check category lock
-    # Try exact match first
+    # Try exact match first (case-sensitive)
     if category in config.CATEGORY_LOCKS:
         return config.CATEGORY_LOCKS[category]
     
-    # Try partial match for category names (handles variations like "Medical supply" vs "Medical supplies")
+    # Try case-insensitive exact match
     category_lower = category.lower()
     for locked_cat, level in config.CATEGORY_LOCKS.items():
-        if locked_cat.lower() in category_lower or category_lower in locked_cat.lower():
+        if locked_cat.lower() == category_lower:
             return level
+    
+    # Try plural/singular variations only (e.g., "Medical supply" vs "Medical supplies")
+    # This is more strict than full substring matching
+    for locked_cat, level in config.CATEGORY_LOCKS.items():
+        locked_lower = locked_cat.lower()
+        # Check if one is the plural of the other (differs only by 's' or 'es')
+        if (category_lower.rstrip('s') == locked_lower.rstrip('s') or
+            category_lower.rstrip('es') == locked_lower.rstrip('es')):
+            return level
+        # Check for "X" matching "X Y" pattern (e.g., "Ammo" should NOT match "Ammo pack")
+        # Only match if the category is more specific (longer) than the locked category
+        if len(category_lower) > len(locked_lower) and category_lower.startswith(locked_lower + ' '):
+            # Category is "Ammo pack", locked is "Ammo" - don't match this way
+            continue
+        if len(locked_lower) > len(category_lower) and locked_lower.startswith(category_lower + ' '):
+            # Category is "Ammo", locked is "Ammo pack" - don't match
+            continue
     
     # Default flea market unlock level
     return config.FLEA_MARKET_UNLOCK_LEVEL
