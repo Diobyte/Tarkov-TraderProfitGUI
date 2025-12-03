@@ -16,6 +16,7 @@ import pandas as pd
 
 import config
 from ml_engine import get_ml_engine
+from utils import get_flea_level_requirement
 
 # Configuration
 # Loaded from config.py
@@ -306,14 +307,17 @@ def fetch_and_store_data() -> None:
             # Normalize: 0-10 offers = low, 10-50 = medium, 50+ = high liquidity
             liquidity_score = min(safe_offer_count / 50.0, 1.0) * 100 if safe_offer_count else 0
             
-            # Add to batch - now with enhanced data
+            # Calculate flea market level requirement based on Patch 1.0 restrictions
+            flea_level_required = get_flea_level_requirement(name, category)
+            
+            # Add to batch - now with enhanced data (26 columns for v3 format)
             batch_data.append((
                 item_id, name, current_time, best_flea_price, best_trader_price, 
                 best_trader_name, profit, icon_link, width, height, 
                 avg_24h_price, low_24h_price, change_last_48h, weight, category,
-                # New fields
+                # Enhanced fields
                 base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-                trader_level_required, trader_task_unlock, price_velocity, liquidity_score,
+                trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score,
                 updated
             ))
             
@@ -340,7 +344,7 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
     after database cleanup via the model_persistence module.
     
     Args:
-        batch_data: List of tuples with item data (25 columns expected).
+        batch_data: List of tuples with item data (26 columns expected for v3 format).
         
     Returns:
         Dict with training statistics including items_processed and profitable_count.
@@ -350,12 +354,13 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
         return {'status': 'no_data', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training
+    # v3 format includes flea_level_required (26 columns)
     columns = [
         'item_id', 'name', 'timestamp', 'flea_price', 'trader_price',
         'trader_name', 'profit', 'icon_link', 'width', 'height',
         'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category',
         'base_price', 'high_24h_price', 'last_offer_count', 'short_name', 'wiki_link',
-        'trader_level_required', 'trader_task_unlock', 'price_velocity', 'liquidity_score',
+        'trader_level_required', 'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score',
         'api_updated'
     ]
     

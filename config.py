@@ -26,7 +26,7 @@ __all__: List[str] = [
     'TREND_VOLATILITY_PENALTY', 'TREND_CONSISTENCY_BONUS', 'TREND_IMPROVEMENT_THRESHOLD',
     'VOLUME_MIN_FOR_RECOMMENDATION', 'VOLUME_LOW_THRESHOLD', 'VOLUME_MEDIUM_THRESHOLD',
     'VOLUME_HIGH_THRESHOLD', 'VOLUME_VERY_HIGH_THRESHOLD', 'VOLUME_WEIGHT_IN_SCORE',
-    'CATEGORY_LOCKS', 'ITEM_LOCKS',
+    'CATEGORY_LOCKS', 'ITEM_LOCKS', 'FLEA_MARKET_UNLOCK_LEVEL',
     'ALERT_DEFAULT_COOLDOWN_MINUTES', 'ALERT_HIGH_PROFIT_THRESHOLD', 'ALERT_HIGH_ROI_THRESHOLD', 'ALERT_MAX_HISTORY',
     'EXPORT_MAX_ROWS', 'EXPORT_CLEANUP_DAYS',
     'DATABASE_CONNECTION_TIMEOUT', 'DATABASE_RETRY_ATTEMPTS', 'DATABASE_RETRY_DELAY', 'DATABASE_BUSY_TIMEOUT_MS',
@@ -124,38 +124,155 @@ VOLUME_HIGH_THRESHOLD: int = _get_env_int('VOLUME_HIGH_THRESHOLD', 100)
 VOLUME_VERY_HIGH_THRESHOLD: int = _get_env_int('VOLUME_VERY_HIGH_THRESHOLD', 200)
 VOLUME_WEIGHT_IN_SCORE: float = _get_env_float('VOLUME_WEIGHT_IN_SCORE', 0.15)
 
-# Flea Market Level Requirements (Based on Patch 0.15+ changes)
+# Flea Market Level Requirements (Based on Patch 1.0 changes)
+# Default flea market unlock is level 15. Categories/items below require higher levels.
+# Format: category/item name -> minimum player level required
+
 CATEGORY_LOCKS: Dict[str, int] = {
-    "Sniper rifle": 20,
+    # === WEAPONS ===
     "Assault rifle": 25,
     "Assault carbine": 25,
+    "Bolt-action rifle": 20,
+    "Sniper rifle": 20,
     "Marksman rifle": 25,
-    "Backpack": 25,
+    "Submachine gun": 20,
+    "Machine gun": 25,
+    "Throwable weapon": 25,
+    
+    # === WEAPON MODS ===
     "Foregrip": 20,
-    "Comb. tact. device": 25,
+    "Auxiliary part": 25,
     "Flashlight": 25,
-    "Auxiliary Mod": 25,
-    "Comb. muzzle device": 20,
-    "Flashhider": 20,
-    "Silencer": 20,
-    "Building material": 30,
-    "Electronics": 30,
-    "Household goods": 30,
-    "Jewelry": 30,
-    "Tool": 30,
-    "Battery": 30,
-    "Lubricant": 30,
-    "Medical supplies": 30,
-    "Fuel": 30,
-    "Drug": 30,
-    "Info": 30,
+    "Tactical combo device": 25,
+    "Laser sight": 25,
+    "Muzzle device": 20,
+    "Muzzle adapter": 20,
+    "Flash hider": 20,
+    "Suppressor": 25,
+    "Silencer": 25,
+    
+    # === AMMO ===
+    "Ammo pack": 25,
+    "Ammunition pack": 25,
+    
+    # === GEAR ===
+    "Backpack": 25,
+    "Headwear": 20,
+    "Eyewear": 20,
+    "Armor component": 30,
+    "Gear component": 30,
+    "Armored equipment": 25,
+    "Container": 25,
+    "Secure container": 25,
+    
+    # === BARTER ITEMS ===
+    "Electronics": 20,
+    "Energy element": 20,
+    "Battery": 20,
+    "Flammable": 20,
+    "Household goods": 20,
+    "Household material": 20,
+    "Medical supply": 20,
+    "Medical supplies": 20,
+    "Valuable": 30,
+    "Valuables": 30,
+    "Other": 25,
+    
+    # === MEDICAL ===
+    "Stimulant": 30,
+    "Injector": 30,
+    "Injury treatment": 20,
+    "Medkit": 20,
+    "Pills": 20,
+    
+    # === KEYS ===
+    "Mechanical key": 25,
+    "Electronic key": 30,
+    "Keycard": 30,
 }
 
+# Specific item level locks (overrides category locks)
+# These are specific high-value or restricted items
 ITEM_LOCKS: Dict[str, int] = {
+    # === ELECTRONICS (Level 20 base, specific items higher) ===
+    "Graphics card": 40,
+    "GPU": 40,
+    "Military circuit board": 35,
+    "Military power filter": 35,
+    "Phased array element": 40,
+    "Tetriz portable game console": 35,
+    "UHF RFID Reader": 35,
+    "VPX Flash Storage Module": 20,
+    "Virtex programmable processor": 35,
+    
+    # === ENERGY ELEMENTS ===
+    "6-STEN-140-M military battery": 40,
+    "GreenBat lithium battery": 35,
+    
+    # === FILTERS ===
+    "FP-100 filter absorber": 35,
+    
+    # === FLAMMABLE / GUNPOWDER ===
+    "Gunpowder Eagle": 30,
+    "Gunpowder Hawk": 30,
+    
+    # === MEDICAL SUPPLIES ===
+    "LEDX Skin Transilluminator": 35,
+    
+    # === MEDICAL - INJURY TREATMENT ===
+    "CALOK-B hemostatic applicator": 30,
+    "Surv12 field surgical kit": 35,
+    
+    # === STIMULANTS / INJECTORS ===
+    "MULE stimulant injector": 40,
+    "eTG-change regenerative stimulant injector": 40,
+    
+    # === GEAR COMPONENTS / ARMOR PLATES ===
+    "Granit 4 ballistic plate": 40,
+    "Korund-VM ballistic plate": 40,
+    
+    # === HEADGEAR ===
+    "DevTac Ronin ballistic helmet": 40,
+    "Vulkan-5 (LShZ-5) heavy helmet": 40,
+    
+    # === CONTAINERS ===
+    "Injector case": 35,
+    "S I C C organizational pouch": 40,
+    "SICC organizational pouch": 40,
+    
+    # === WEAPONS (specific high-tier) ===
+    "Accuracy International AXMC .338 LM bolt-action sniper rifle": 40,
+    "SWORD International Mk-18 .338 LM marksman rifle": 40,
+    
+    # === AMMO PACKS ===
+    ".300 Blackout CBJ ammo pack": 40,
+    ".308 M80 ammo pack": 35,
+    ".366 TKM AP-M ammo pack": 35,
+    "12.7x55mm PS12B ammo pack": 40,
+    "12.7x55mm PS12B": 40,
     "PS12B": 40,
+    "23x75mm Zvezda flashbang round ammo pack": 40,
+    "5.45x39mm 7N40 ammo pack": 35,
+    "5.56x45mm M855A1 ammo pack": 40,
+    "7.62x39mm PP gzh ammo pack": 30,
+    "7.62x51mm M80 ammo pack": 35,
     "M80": 35,
-    "Blackout CJB": 40,
+    "7.62x54mm PS gzh ammo pack": 40,
+    "9x39mm PAB-9 gs ammo pack": 40,
+    ".300 Blackout": 40,
+    "Blackout CBJ": 40,
+    
+    # === MARKED KEYS ===
+    "Abandoned factory marked key": 35,
+    "Dorm room 314 marked key": 35,
+    "Mysterious room marked key": 35,
+    "RB-BK marked key": 35,
+    "RB-PKPM marked key": 35,
+    "Shared bedroom marked key": 35,
 }
+
+# Default flea market unlock level
+FLEA_MARKET_UNLOCK_LEVEL: int = 15
 
 # Alert Configuration
 ALERT_DEFAULT_COOLDOWN_MINUTES: int = _get_env_int('ALERT_DEFAULT_COOLDOWN_MINUTES', 30)

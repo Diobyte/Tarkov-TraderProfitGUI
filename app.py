@@ -524,10 +524,10 @@ def load_data() -> pd.DataFrame:
             'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price',
             'change_last_48h', 'weight', 'category', 'base_price', 'high_24h_price',
             'last_offer_count', 'short_name', 'wiki_link', 'trader_level_required',
-            'trader_task_unlock', 'price_velocity', 'liquidity_score'
+            'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score'
         ]
         
-        # Handle old/new data formats
+        # Handle old/new data formats (15, 24, 25, or 26 columns)
         if len(data[0]) == 15:
             df = pd.DataFrame(data, columns=columns[:15])
             for col in columns[15:]:
@@ -535,17 +535,26 @@ def load_data() -> pd.DataFrame:
                     df[col] = df['name']
                 elif col == 'wiki_link' or col == 'trader_task_unlock':
                     df[col] = ''
+                elif col == 'flea_level_required':
+                    df[col] = config.FLEA_MARKET_UNLOCK_LEVEL  # Default to 15
                 else:
                     df[col] = 0
         elif len(data[0]) >= 24:
-            # Use available columns
-            df = pd.DataFrame(data, columns=columns[:len(data[0])])
+            # Use available columns - may include flea_level_required or not
+            actual_cols = len(data[0])
+            df = pd.DataFrame(data, columns=columns[:actual_cols])
             # Add any missing columns
-            for col in columns[len(data[0]):]:
+            for col in columns[actual_cols:]:
                 if col == 'short_name':
                     df[col] = df['name']
                 elif col in ('wiki_link', 'trader_task_unlock'):
                     df[col] = ''
+                elif col == 'flea_level_required':
+                    # Calculate from category/item if not in data
+                    df[col] = df.apply(
+                        lambda row: utils.get_flea_level_requirement(row['name'], row['category']),
+                        axis=1
+                    )
                 else:
                     df[col] = 0
         else:
@@ -583,6 +592,7 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
             - min_offers: Minimum offer count (default: 5)
             - min_profit_per_slot: Minimum profit per inventory slot
             - max_trader_level: Maximum allowed trader level
+            - player_level: Player's current level for flea market access (default: 15)
     
     Returns:
         pd.DataFrame: Filtered DataFrame matching all criteria.
@@ -603,10 +613,15 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     min_offers = filters.get('min_offers', config.VOLUME_MIN_FOR_RECOMMENDATION)
     min_profit_per_slot = filters.get('min_profit_per_slot', 0)
     max_trader_level = filters.get('max_trader_level', None)
+    player_level = filters.get('player_level', None)
     
     # Ensure profit_per_slot column exists
     if 'profit_per_slot' not in df.columns:
         df['profit_per_slot'] = 0
+    
+    # Ensure flea_level_required column exists
+    if 'flea_level_required' not in df.columns:
+        df['flea_level_required'] = config.FLEA_MARKET_UNLOCK_LEVEL
     
     filtered = df[
         (df['profit'] >= filters['min_profit']) &
@@ -623,6 +638,10 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
 
     if max_trader_level is not None and 'trader_level_required' in filtered.columns:
         filtered = filtered[filtered['trader_level_required'] <= max_trader_level]
+    
+    # Filter by player level for flea market access (Patch 1.0 restrictions)
+    if player_level is not None and 'flea_level_required' in filtered.columns:
+        filtered = filtered[filtered['flea_level_required'] <= player_level]
     
     if not filters['show_negative']:
         filtered = filtered[filtered['profit'] > 0]
@@ -787,6 +806,7 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
             consistency = item.get('learned_consistency', 50)
             profit_per_slot = item.get('profit_per_slot', 0)
             trader_level = item.get('trader_level_required', 1)
+            flea_level = item.get('flea_level_required', config.FLEA_MARKET_UNLOCK_LEVEL)
             
             st.markdown(f"""
             <div class="profit-card">
@@ -810,10 +830,10 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
                     </div>
                 </div>
                 <div style="margin-top: 8px; color: #6B7280; font-size: 0.8rem;">
-                    {item['trader_name']} (L{trader_level}) • {item['category']} • {item.get('last_offer_count', 0):.0f} offers
+                    {item['trader_name']} (LL{trader_level}) • {item['category']} • {item.get('last_offer_count', 0):.0f} offers
                 </div>
                 <div style="margin-top: 4px; color: #9CA3AF; font-size: 0.75rem;">
-                    Profit/slot: ₽{profit_per_slot:,.0f}
+                    Profit/slot: ₽{profit_per_slot:,.0f} • <span style="color: #FFA500;">Flea Lvl {flea_level}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -881,7 +901,8 @@ def render_data_table(df: pd.DataFrame) -> None:
     
     # Prepare display dataframe
     display_cols = ['icon_link', 'name', 'trend', 'profit', 'roi', 'flea_price', 
-                   'trader_price', 'trader_name', 'category', 'last_offer_count']
+                   'trader_price', 'trader_name', 'trader_level_required', 'flea_level_required',
+                   'category', 'last_offer_count']
     
     # Add ML score if available
     if 'ml_opportunity_score' in ml_df.columns:
@@ -904,6 +925,8 @@ def render_data_table(df: pd.DataFrame) -> None:
         "flea_price": st.column_config.NumberColumn("Flea", format="₽%d", width=90),
         "trader_price": st.column_config.NumberColumn("Trader", format="₽%d", width=90),
         "trader_name": st.column_config.TextColumn("Trader", width=80),
+        "trader_level_required": st.column_config.NumberColumn("LL", format="%d", width=40, help="Trader Loyalty Level Required"),
+        "flea_level_required": st.column_config.NumberColumn("Flea Lvl", format="%d", width=65, help="Player Level Required for Flea Market Access"),
         "category": st.column_config.TextColumn("Category", width=100),
         "last_offer_count": st.column_config.NumberColumn("Offers", width=65),
     }
@@ -1006,7 +1029,8 @@ def render_market_explorer(df: pd.DataFrame) -> None:
     # Full table with all columns
     display_cols = [
         'icon_link', 'name', 'profit', 'roi', 'flea_price', 'trader_price',
-        'trader_name', 'category', 'avg_24h_price', 'low_24h_price', 'high_24h_price',
+        'trader_name', 'trader_level_required', 'flea_level_required', 'category', 
+        'avg_24h_price', 'low_24h_price', 'high_24h_price',
         'change_last_48h', 'last_offer_count', 'weight'
     ]
     
@@ -1023,6 +1047,8 @@ def render_market_explorer(df: pd.DataFrame) -> None:
             "flea_price": st.column_config.NumberColumn("Flea", format="₽%d", width=90),
             "trader_price": st.column_config.NumberColumn("Trader", format="₽%d", width=90),
             "trader_name": st.column_config.TextColumn("Sell To", width=80),
+            "trader_level_required": st.column_config.NumberColumn("LL", format="%d", width=40, help="Trader Loyalty Level Required"),
+            "flea_level_required": st.column_config.NumberColumn("Flea Lvl", format="%d", width=65, help="Player Level Required for Flea Market Access"),
             "category": st.column_config.TextColumn("Category", width=100),
             "avg_24h_price": st.column_config.NumberColumn("24h Avg", format="₽%d", width=90),
             "low_24h_price": st.column_config.NumberColumn("24h Low", format="₽%d", width=85),
@@ -1852,6 +1878,22 @@ def render_item_detail(df: pd.DataFrame) -> None:
         with metrics_col4:
             st.metric("Trader Price", f"₽{item['trader_price']:,.0f}")
         
+        # Additional details row
+        detail_col1, detail_col2, detail_col3, detail_col4 = st.columns(4)
+        
+        with detail_col1:
+            trader_level = item.get('trader_level_required', 1)
+            st.metric("Trader Level", f"LL{trader_level}", help="Trader Loyalty Level Required")
+        with detail_col2:
+            flea_level = item.get('flea_level_required', config.FLEA_MARKET_UNLOCK_LEVEL)
+            st.metric("Flea Level", f"Lvl {flea_level}", help="Player Level Required for Flea Market")
+        with detail_col3:
+            offers = item.get('last_offer_count', 0)
+            st.metric("Offers", f"{offers:,.0f}")
+        with detail_col4:
+            trader_name = item.get('trader_name', 'Unknown')
+            st.metric("Sell To", trader_name)
+        
         # Price history chart
         history = database.get_item_history(item['item_id'])
         if history and len(history) > 1:
@@ -2262,6 +2304,15 @@ def render_sidebar() -> dict:
         min_profit = st.number_input("Min Profit (₽)", value=0, step=1000)
         min_roi = st.number_input("Min ROI (%)", value=0.0, step=1.0)
         
+        # Player level for flea market access (Patch 1.0)
+        player_level = st.slider(
+            "🎮 Player Level",
+            min_value=15,
+            max_value=79,
+            value=79,
+            help="Filter items by flea market level requirement. Items requiring higher level will be hidden."
+        )
+        
         df = load_data()
         categories = ['All'] + sorted(df['category'].dropna().unique().tolist()) if not df.empty else ['All']
         category = st.selectbox("Category", categories)
@@ -2295,7 +2346,8 @@ def render_sidebar() -> dict:
             'min_roi': min_roi,
             'category': category,
             'search': search,
-            'show_negative': show_negative
+            'show_negative': show_negative,
+            'player_level': player_level
         }
 
 # =============================================================================

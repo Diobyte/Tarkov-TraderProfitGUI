@@ -1269,11 +1269,19 @@ class TarkovMLEngine:
         features = self.calculate_risk_score(features)
         features = self.cluster_items(features)
         
-        # Filter by player level (flea market access)
-        if player_level < 15:
+        # Filter by player level (flea market access based on Patch 1.0 restrictions)
+        # Uses flea_level_required column if available, otherwise defaults to accessible
+        if player_level < config.FLEA_MARKET_UNLOCK_LEVEL:
+            # Player below flea market unlock level - nothing accessible
             features['accessible'] = False
         else:
-            features['accessible'] = features.get('trader_level_required', 1) <= 4
+            # Check both trader level and flea market level requirements
+            trader_accessible = features.get('trader_level_required', 1) <= 4
+            if 'flea_level_required' in features.columns:
+                flea_accessible = features['flea_level_required'] <= player_level
+                features['accessible'] = trader_accessible & flea_accessible
+            else:
+                features['accessible'] = trader_accessible
         
         # Filter by risk tolerance
         risk_thresholds = {'low': 40, 'medium': 70, 'high': 100}

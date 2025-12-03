@@ -212,6 +212,7 @@ def init_db() -> None:
                 wiki_link TEXT,
                 trader_level_required INTEGER,
                 trader_task_unlock TEXT,
+                flea_level_required INTEGER DEFAULT 15,
                 price_velocity REAL,
                 liquidity_score REAL,
                 api_updated TEXT
@@ -256,6 +257,12 @@ def init_db() -> None:
             c.execute('ALTER TABLE prices ADD COLUMN liquidity_score REAL DEFAULT 0.0')
             c.execute('ALTER TABLE prices ADD COLUMN api_updated TEXT')
 
+        # Check if flea_level_required column exists (v3 migration for Patch 1.0)
+        try:
+            c.execute('SELECT flea_level_required FROM prices LIMIT 1')
+        except sqlite3.OperationalError:
+            c.execute('ALTER TABLE prices ADD COLUMN flea_level_required INTEGER DEFAULT 15')
+
         # Create indexes for performance
         c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp ON prices (timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_prices_item_id ON prices (item_id)')
@@ -294,9 +301,9 @@ def save_prices_batch(items: List[Tuple]) -> None:
         raise ValueError("All items must have the same number of columns")
     
     # Validate tuple length is expected
-    if first_len not in (15, 25):
+    if first_len not in (15, 25, 26):
         logging.warning(
-            "Unexpected item tuple length: %d. Expected 15 (legacy) or 25 (enhanced). "
+            "Unexpected item tuple length: %d. Expected 15 (legacy), 25 (v2), or 26 (v3 with flea level). "
             "This may indicate schema mismatch.",
             first_len
         )
@@ -307,10 +314,11 @@ def save_prices_batch(items: List[Tuple]) -> None:
         c = conn.cursor()
         
         # Prepare the data for executemany
-        # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
-        #                  avg_24h_price, low_24h_price, change_last_48h, weight, category,
-        #                  base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-        #                  trader_level_required, trader_task_unlock, price_velocity, liquidity_score, api_updated)
+        # Expected tuple (26 columns): 
+        # (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
+        #  avg_24h_price, low_24h_price, change_last_48h, weight, category,
+        #  base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+        #  trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated)
         
         # Convert datetime objects to string to ensure consistency
         processed_items = []
@@ -321,21 +329,30 @@ def save_prices_batch(items: List[Tuple]) -> None:
                 item_list[2] = item_list[2].isoformat()
             processed_items.append(tuple(item_list))
 
-        # Handle both old format (15 columns) and new format (25 columns)
+        # Handle legacy format (15 columns), v2 format (25 columns), and v3 format (26 columns)
         if len(processed_items[0]) == 15:
             # Old format - backward compatibility
             c.executemany('''
                 INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', processed_items)
-        else:
-            # New enhanced format
+        elif len(processed_items[0]) == 25:
+            # v2 enhanced format (without flea_level_required)
             c.executemany('''
                 INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
                     avg_24h_price, low_24h_price, change_last_48h, weight, category,
                     base_price, high_24h_price, last_offer_count, short_name, wiki_link,
                     trader_level_required, trader_task_unlock, price_velocity, liquidity_score, api_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', processed_items)
+        else:
+            # v3 format with flea_level_required
+            c.executemany('''
+                INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
+                    avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                    base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                    trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', processed_items)
         
         conn.commit()
@@ -378,7 +395,7 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
                 SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
                     avg_24h_price, low_24h_price, change_last_48h, weight, category,
                     base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-                    trader_level_required, trader_task_unlock, price_velocity, liquidity_score
+                    trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score
                 FROM prices
                 WHERE timestamp = ?
                 ORDER BY profit DESC
@@ -397,7 +414,7 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
                 p.timestamp, p.icon_link, p.width, p.height, p.avg_24h_price, 
                 p.low_24h_price, p.change_last_48h, p.weight, p.category,
                 p.base_price, p.high_24h_price, p.last_offer_count, p.short_name, p.wiki_link,
-                p.trader_level_required, p.trader_task_unlock, p.price_velocity, p.liquidity_score
+                p.trader_level_required, p.trader_task_unlock, p.flea_level_required, p.price_velocity, p.liquidity_score
             FROM prices p
             INNER JOIN (
                 SELECT item_id, MAX(timestamp) as max_ts

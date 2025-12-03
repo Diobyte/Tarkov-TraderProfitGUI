@@ -4,7 +4,56 @@ import pandas as pd
 import numpy as np
 from typing import Optional, Union, List
 
-__all__: List[str] = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
+import config
+
+__all__: List[str] = [
+    'calculate_metrics', 
+    'calculate_flea_market_fee', 
+    'format_roubles',
+    'get_flea_level_requirement'
+]
+
+
+def get_flea_level_requirement(item_name: str, category: str) -> int:
+    """
+    Get the minimum player level required to access an item on the Flea Market.
+    
+    Based on Patch 1.0 restrictions. Item-specific locks take priority over
+    category locks. Falls back to the default flea market unlock level (15).
+    
+    Args:
+        item_name: The name of the item to check.
+        category: The item's category.
+        
+    Returns:
+        Minimum player level required (15-40 range typically).
+        
+    Example:
+        >>> get_flea_level_requirement("Graphics card", "Electronics")
+        40
+        >>> get_flea_level_requirement("Bolts", "Electronics")
+        20
+        >>> get_flea_level_requirement("Bandage", "Medical")
+        15
+    """
+    # Check item-specific lock first (highest priority)
+    for locked_item, level in config.ITEM_LOCKS.items():
+        if locked_item.lower() in item_name.lower() or item_name.lower() in locked_item.lower():
+            return level
+    
+    # Check category lock
+    # Try exact match first
+    if category in config.CATEGORY_LOCKS:
+        return config.CATEGORY_LOCKS[category]
+    
+    # Try partial match for category names (handles variations like "Medical supply" vs "Medical supplies")
+    category_lower = category.lower()
+    for locked_cat, level in config.CATEGORY_LOCKS.items():
+        if locked_cat.lower() in category_lower or category_lower in locked_cat.lower():
+            return level
+    
+    # Default flea market unlock level
+    return config.FLEA_MARKET_UNLOCK_LEVEL
 
 
 def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
