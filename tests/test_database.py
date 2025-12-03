@@ -8,6 +8,46 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database
 
+
+class TestParseTimestamp(unittest.TestCase):
+    """Tests for the parse_timestamp utility function."""
+    
+    def test_parse_iso_format(self):
+        """Test parsing ISO format timestamps."""
+        ts = database.parse_timestamp('2024-01-15T10:30:45.123456')
+        self.assertIsNotNone(ts)
+        assert ts is not None
+        self.assertEqual(ts.year, 2024)
+        self.assertEqual(ts.month, 1)
+        self.assertEqual(ts.day, 15)
+    
+    def test_parse_legacy_format_with_space(self):
+        """Test parsing legacy format with space separator."""
+        ts = database.parse_timestamp('2024-01-15 10:30:45.123456')
+        self.assertIsNotNone(ts)
+        assert ts is not None
+        self.assertEqual(ts.year, 2024)
+    
+    def test_parse_simple_format(self):
+        """Test parsing simple datetime format."""
+        ts = database.parse_timestamp('2024-01-15 10:30:45')
+        self.assertIsNotNone(ts)
+        assert ts is not None
+        self.assertEqual(ts.hour, 10)
+    
+    def test_parse_none(self):
+        """Test parsing None returns None."""
+        self.assertIsNone(database.parse_timestamp(None))
+    
+    def test_parse_empty_string(self):
+        """Test parsing empty string returns None."""
+        self.assertIsNone(database.parse_timestamp(''))
+    
+    def test_parse_invalid_format(self):
+        """Test parsing invalid format returns None."""
+        self.assertIsNone(database.parse_timestamp('not-a-timestamp'))
+
+
 class TestDatabase(unittest.TestCase):
     def setUp(self):
         # Use a temporary file for DB testing instead of the real one

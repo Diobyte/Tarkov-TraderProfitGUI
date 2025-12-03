@@ -8,3 +8,4 @@ plotly
 pyarrow
 psutil
 numpy
+pytest>=7.0.0

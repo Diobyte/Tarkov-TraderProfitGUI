@@ -3,12 +3,51 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional, Any, Callable
+from typing import List, Tuple, Optional, Any, Callable, Union
 from functools import wraps
+
+import config
 
 # Ensure DB is always created in the same directory as this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, 'tarkov_data.db')
+
+
+def parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parse a timestamp string into a datetime object.
+    Handles multiple formats for backward compatibility.
+    
+    Args:
+        ts_str: Timestamp string in ISO or legacy format.
+        
+    Returns:
+        datetime object or None if parsing fails.
+    """
+    if not ts_str:
+        return None
+    
+    # Try ISO format first (most common)
+    try:
+        return datetime.fromisoformat(ts_str)
+    except ValueError:
+        pass
+    
+    # Try legacy formats
+    formats = [
+        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M'
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(ts_str, fmt)
+        except ValueError:
+            continue
+    
+    return None
 
 def retry_db_op(max_retries: int = 5, delay: float = 1.0):
     """
@@ -191,15 +230,11 @@ def get_latest_prices() -> List[Tuple]:
     # 2. Calculate a lookback window relative to the latest data
     # This ensures we capture items from recent previous batches if the latest batch was partial
     # (e.g. API returned 2300 items instead of 4000), but doesn't show ancient data.
-    try:
-        # Handle ISO format (most common)
-        latest_dt = datetime.fromisoformat(latest_ts_str)
-    except ValueError:
-        try:
-            # Fallback for legacy formats
-            latest_dt = datetime.strptime(latest_ts_str, '%Y-%m-%d %H:%M:%S.%f')
-        except ValueError:
-            # If parsing fails, fallback to exact match logic (old behavior)
+    latest_dt = parse_timestamp(latest_ts_str)
+    
+    if latest_dt is None:
+        # Fallback: if parsing fails, try exact match logic (old behavior)
+        if True:  # Replaces the nested try/except structure
             c.execute('''
                 SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
                     avg_24h_price, low_24h_price, change_last_48h, weight, category,
@@ -213,9 +248,9 @@ def get_latest_prices() -> List[Tuple]:
             conn.close()
             return rows
 
-    # Window of 45 minutes allows for ~9 missed/partial collection cycles (assuming 5m interval)
+    # Window allows for missed/partial collection cycles
     # This bridges the gap when the API returns partial lists.
-    cutoff_dt = latest_dt - timedelta(minutes=45)
+    cutoff_dt = latest_dt - timedelta(minutes=config.DB_LOOKBACK_WINDOW_MINUTES)
     cutoff_ts_str = cutoff_dt.isoformat()
 
     c.execute('''
@@ -271,15 +306,9 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     
     anchor_time = datetime.now()
     if result and result[0]:
-        try:
-            # Try ISO format first
-            anchor_time = datetime.fromisoformat(result[0])
-        except ValueError:
-            try:
-                # Try legacy format
-                anchor_time = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S.%f')
-            except ValueError:
-                pass
+        parsed = parse_timestamp(result[0])
+        if parsed:
+            anchor_time = parsed
 
     time_threshold = anchor_time - timedelta(hours=hours)
     
@@ -339,6 +368,11 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> Optional[int]:
 
 @retry_db_op()
 def get_latest_timestamp() -> Optional[datetime]:
+    """Get the most recent timestamp from the prices table.
+    
+    Returns:
+        datetime object of the most recent record, or None if no data.
+    """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('SELECT MAX(timestamp) FROM prices')
@@ -346,28 +380,7 @@ def get_latest_timestamp() -> Optional[datetime]:
     conn.close()
     
     if result and result[0]:
-        ts_str = result[0]
-        # Handle potential format differences
-        try:
-            return datetime.fromisoformat(ts_str)
-        except ValueError:
-            pass
-        
-        # Try common formats
-        formats = [
-            '%Y-%m-%dT%H:%M:%S.%f', # ISO format with T
-            '%Y-%m-%d %H:%M:%S.%f',
-            '%Y-%m-%d %H:%M:%S',
-            '%Y-%m-%d %H:%M'
-        ]
-        
-        for fmt in formats:
-            try:
-                return datetime.strptime(ts_str, fmt)
-            except ValueError:
-                continue
-        
-        return None
+        return parse_timestamp(result[0])
     return None
 
 @retry_db_op()
