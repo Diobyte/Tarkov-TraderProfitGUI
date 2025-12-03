@@ -42,7 +42,10 @@ def handle_exit(signum: int, frame: Optional[FrameType]) -> NoReturn:
         frame: The current stack frame (unused).
     """
     global _session
-    signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    try:
+        signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    except (ValueError, AttributeError):
+        signal_name = str(signum)
     logger.info("Collector stopped by signal %s (%d).", signal_name, signum)
     
     # Clean up session on exit

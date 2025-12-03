@@ -188,8 +188,11 @@ def format_roubles(value: Union[int, float, None]) -> str:
         # Check for NaN/inf before item() conversion to avoid conversion errors
         if hasattr(value, 'item'):
             # For numpy types, check isnan/isinf before converting
-            if np.isnan(value) or np.isinf(value):  # type: ignore[arg-type]
-                return "0 ₽"
+            try:
+                if np.isnan(value) or np.isinf(value):  # type: ignore[arg-type]
+                    return "0 ₽"
+            except (TypeError, ValueError):
+                pass  # Not a numeric type that supports isnan/isinf
             value = value.item()  # type: ignore[union-attr]
         if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
             return "0 ₽"

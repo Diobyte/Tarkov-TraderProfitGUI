@@ -15,6 +15,7 @@ Security Note:
 """
 
 import json
+import math
 import pickle
 import os
 import logging
@@ -193,8 +194,6 @@ class ModelPersistence:
             trader = 'Unknown'
         
         # Sanitize inputs to avoid NaN/inf issues
-        import math
-        
         # Convert numpy/pandas types to Python native types
         if hasattr(profit, 'item'):
             profit = float(profit.item())

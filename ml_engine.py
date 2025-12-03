@@ -393,14 +393,18 @@ class TarkovMLEngine:
         
         # Classify trend direction
         def classify_trend(trend_val: float) -> str:
-            if pd.isna(trend_val) or np.isinf(trend_val):
+            try:
+                if trend_val is None or pd.isna(trend_val) or np.isinf(trend_val):
+                    return 'Unknown'
+                trend_float = float(trend_val)
+                if trend_float > config.TREND_IMPROVEMENT_THRESHOLD:
+                    return 'Improving'
+                elif trend_float < -config.TREND_IMPROVEMENT_THRESHOLD:
+                    return 'Declining'
+                else:
+                    return 'Stable'
+            except (ValueError, TypeError):
                 return 'Unknown'
-            if trend_val > config.TREND_IMPROVEMENT_THRESHOLD:
-                return 'Improving'
-            elif trend_val < -config.TREND_IMPROVEMENT_THRESHOLD:
-                return 'Declining'
-            else:
-                return 'Stable'
         
         features['trend_direction'] = features['profit_trend'].apply(classify_trend)
         
@@ -912,8 +916,9 @@ class TarkovMLEngine:
                 optimal_k = list(K_range)[np.argmin(drops) + 1]
                 n_clusters = min(optimal_k, n_clusters)
         
-        # Final clustering
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        # Final clustering - ensure n_clusters doesn't exceed sample count
+        actual_n_clusters = min(n_clusters, len(df))
+        kmeans = KMeans(n_clusters=actual_n_clusters, random_state=42, n_init=10)
         features['cluster'] = kmeans.fit_predict(X_scaled)
         
         # Analyze clusters and assign meaningful labels

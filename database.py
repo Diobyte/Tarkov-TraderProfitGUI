@@ -40,15 +40,15 @@ class DatabaseConnection:
             rows = cursor.fetchall()
     """
     
-    def __init__(self, timeout: int = 30, readonly: bool = False) -> None:
+    def __init__(self, timeout: Optional[int] = None, readonly: bool = False) -> None:
         """
         Initialize the connection manager.
         
         Args:
-            timeout: Connection timeout in seconds.
+            timeout: Connection timeout in seconds. Defaults to config value.
             readonly: If True, opens connection in read-only mode.
         """
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else config.DATABASE_CONNECTION_TIMEOUT
         self.readonly = readonly
         self.conn: Optional[sqlite3.Connection] = None
         self.cursor: Optional[sqlite3.Cursor] = None
@@ -156,7 +156,7 @@ def retry_db_op(
 def init_db() -> None:
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         # Enable WAL mode for better concurrency
         conn.execute('PRAGMA journal_mode=WAL;')
         c = conn.cursor()
@@ -272,7 +272,7 @@ def save_prices_batch(items: List[Tuple]) -> None:
     
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # Prepare the data for executemany
@@ -325,7 +325,7 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # 1. Get the absolute latest timestamp to establish a "current" anchor point
@@ -396,7 +396,7 @@ def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         c.execute('''
             SELECT timestamp, flea_price, trader_price, profit
@@ -424,7 +424,7 @@ def get_market_trends(hours: int = 6) -> List[Tuple[str, float, int, int, int]]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # Use the latest timestamp in the DB as the anchor, not current time.
@@ -470,7 +470,7 @@ def get_all_prices() -> List[Tuple[Any, ...]]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         c.execute('''
             SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp
@@ -496,7 +496,7 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         cutoff_date = datetime.now() - timedelta(days=days)
         c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date.isoformat(),))
@@ -527,16 +527,13 @@ def get_latest_timestamp() -> Optional[datetime]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         c.execute('SELECT MAX(timestamp) FROM prices')
         result = c.fetchone()
         
         if result and result[0]:
             return parse_timestamp(result[0])
-        return None
-    except sqlite3.Error as e:
-        logging.warning("Failed to get latest timestamp: %s", e)
         return None
     finally:
         if conn:
@@ -552,7 +549,7 @@ def clear_all_data() -> None:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         c.execute('DELETE FROM prices')
         conn.commit()
@@ -588,7 +585,7 @@ def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # Get anchor time from latest data
@@ -665,7 +662,7 @@ def get_profit_statistics(hours: int = 24) -> Dict[str, Any]:
     """
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # Get anchor time
@@ -761,7 +758,7 @@ def get_database_health() -> Dict[str, Any]:
     
     # Check database contents
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=30)
+        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         
         # Get record counts

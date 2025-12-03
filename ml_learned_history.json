@@ -104,11 +104,27 @@
       "profitable_rate": 0.005584858827179647,
       "avg_profit": -69728.02451132485,
       "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T21:04:05.817515",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69712.20260626746,
+      "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T21:09:28.819259",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69672.62612472851,
+      "accuracy": null
     }
   ],
   "daily_summaries": [],
   "category_trends": {},
   "accuracy_history": [],
-  "total_items_seen": 41899,
-  "total_profitable_items": 232
+  "total_items_seen": 48345,
+  "total_profitable_items": 268
 }
