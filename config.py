@@ -29,6 +29,8 @@ __all__: List[str] = [
     # Data paths
     'DATA_DIR', 'DB_PATH', 'MODEL_STATE_PATH', 'MODEL_HISTORY_PATH',
     'EXPORTS_DIR', 'LOGS_DIR', 'PID_FILE', 'STANDALONE_PID_FILE',
+    # Logging
+    'LOG_LEVEL',
     # API settings
     'API_URL', 'COLLECTION_INTERVAL_MINUTES', 'DATA_RETENTION_DAYS', 'API_TIMEOUT_SECONDS',
     'DB_LOOKBACK_WINDOW_MINUTES', 'LIQUIDITY_NORMALIZATION_THRESHOLD', 'MAX_LIQUIDITY_SCORE',
@@ -110,6 +112,30 @@ def _get_env_float(key: str, default: float) -> float:
 def _get_env_str(key: str, default: str) -> str:
     """Get string value from environment variable or use default."""
     return os.environ.get(f'TARKOV_{key}', default)
+
+
+def _get_log_level() -> int:
+    """Get log level from environment variable.
+    
+    Supports: DEBUG, INFO, WARNING, ERROR, CRITICAL (case-insensitive).
+    
+    Returns:
+        logging level constant (e.g., logging.INFO).
+    """
+    level_str = os.environ.get('TARKOV_LOG_LEVEL', 'INFO').upper()
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'WARN': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+    return level_map.get(level_str, logging.INFO)
+
+
+# Log level - Can be set via TARKOV_LOG_LEVEL environment variable
+LOG_LEVEL: Final[int] = _get_log_level()
 
 
 # =============================================================================

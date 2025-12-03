@@ -1,9 +1,34 @@
 # Docker Compose for Tarkov Trader Profit GUI
 # Pulls pre-built images from GitHub Container Registry
+#
 # Usage: docker compose up -d
 #
-# For single-container mode (all services in one): docker run ghcr.io/diobyte/tarkov-traderprofitgui:latest
-# For multi-container mode (recommended for production): docker compose up -d
+# For single-container mode (all services in one):
+#   docker run -p 8501:8501 -p 4000:4000 -v tarkov-data:/data ghcr.io/diobyte/tarkov-traderprofitgui:latest
+#
+# For multi-container mode (recommended for production):
+#   docker compose up -d
+#
+# ==============================================================================
+# Environment Variables Reference
+# ==============================================================================
+# PUID/PGID  - User/Group IDs for volume permissions (default: 1000)
+# TZ         - Timezone (default: Etc/UTC, e.g., America/New_York)
+#
+# Application Settings:
+# TARKOV_DATA_DIR                    - Data directory (default: /data)
+# TARKOV_COLLECTION_INTERVAL_MINUTES - API poll interval (default: 5)
+# TARKOV_DATA_RETENTION_DAYS         - Days to keep history (default: 7)
+# TARKOV_LOG_LEVEL                   - Log verbosity (default: INFO)
+#
+# API Settings:
+# API_HOST - GraphQL API bind address (default: 0.0.0.0)
+# API_PORT - GraphQL API port (default: 4000)
+#
+# Streamlit Settings:
+# STREAMLIT_SERVER_ADDRESS - Dashboard bind address (default: 0.0.0.0)
+# STREAMLIT_SERVER_PORT    - Dashboard port (default: 8501)
+# ==============================================================================
 
 services:
   # =============================================================================
@@ -14,13 +39,22 @@ services:
     container_name: tarkov-collector
     restart: unless-stopped
     command: ["python", "-u", "collector.py", "--standalone"]
-    init: true  # Use tini for proper signal handling
+    init: true
     volumes:
       - tarkov-data:/data
+      # Optional: Mount custom init scripts
+      # - ./custom-scripts:/custom-cont-init.d:ro
     environment:
+      # User/Group mapping (match your host user)
+      - PUID=1000
+      - PGID=1000
+      # Timezone
+      - TZ=Etc/UTC
+      # Application settings
       - TARKOV_DATA_DIR=/data
       - TARKOV_COLLECTION_INTERVAL_MINUTES=5
       - TARKOV_DATA_RETENTION_DAYS=7
+      - TARKOV_LOG_LEVEL=INFO
     networks:
       - tarkov-net
     healthcheck:
@@ -49,7 +83,11 @@ services:
     volumes:
       - tarkov-data:/data
     environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
       - TARKOV_DATA_DIR=/data
+      - TARKOV_LOG_LEVEL=INFO
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - STREAMLIT_SERVER_PORT=8501
       - STREAMLIT_SERVER_HEADLESS=true
@@ -85,7 +123,11 @@ services:
     volumes:
       - tarkov-data:/data
     environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
       - TARKOV_DATA_DIR=/data
+      - TARKOV_LOG_LEVEL=INFO
       - API_HOST=0.0.0.0
       - API_PORT=4000
     networks:
