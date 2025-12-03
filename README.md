@@ -4,110 +4,224 @@ A powerful, ML-enhanced dashboard for **Escape from Tarkov** that identifies pro
 
 **Stop guessing. Start profiting.**
 
+![Dashboard Demo](Recording%202025-12-02%20174142.gif)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Version](https://img.shields.io/badge/version-3.0-green)
 
+---
+
+## 🚀 Quick Start (Windows)
+
+### Prerequisites
+
+- **Windows 10/11** (64-bit)
+- **Internet connection** (for API data and initial setup)
+
+That's it! The launcher will automatically install Python and all dependencies if needed.
+
+### Step 1: Download the Project
+
+**Option A: Clone with Git**
+
+```bash
+git clone https://github.com/Diobyte/Tarkov-TraderProfitGUI.git
+cd Tarkov-TraderProfitGUI
+```
+
+**Option B: Download ZIP**
+
+1. Click the green **"Code"** button above → **"Download ZIP"**
+2. Extract the ZIP to any folder (e.g., `C:\TarkovProfit`)
+
+### Step 2: Run the Application
+
+Double-click **`run.bat`** — that's it!
+
+The launcher will:
+
+1. ✅ Check for Python (installs Python 3.12 via Winget if missing)
+2. ✅ Create a virtual environment (`.venv`)
+3. ✅ Install all dependencies automatically
+4. ✅ Start the data collector in the background
+5. ✅ Open the dashboard in your browser
+
+> **First run takes 2-5 minutes** to download and install everything. Subsequent runs are instant.
+
+---
+
+## 📋 Usage Options
+
+### Option 1: Dashboard + Collector (Recommended)
+
+Double-click **`run.bat`**
+
+- Launches the GUI dashboard at `http://localhost:8501`
+- Automatically starts the data collector in the background
+- **Note**: Closing the terminal window stops both the dashboard and collector
+
+### Option 2: 24/7 Data Collection
+
+Double-click **`run_collector.bat`**
+
+- Runs _only_ the data collector in a terminal window
+- Keeps collecting data 24/7, even when the dashboard is closed
+- Use `run.bat` separately to view collected data
+
+### Option 3: PowerShell Scripts
+
+If you prefer PowerShell directly:
+
+```powershell
+# Full application (dashboard + collector)
+.\run.ps1
+
+# Collector only
+.\run_collector.ps1
+```
+
+---
+
 ## 🌟 Features
 
 ### Core Features
 
-- **Real-Time Data**: Fetches live market data from the [tarkov.dev API](https://tarkov.dev/api/) every 5 minutes.
-- **Smart Analysis**: Automatically calculates **Profit**, **ROI**, **Profit Per Slot**, and **Risk Scores**.
-- **Visual Dashboard**: Built with Streamlit for interactive sorting, filtering, and charting.
-- **Historical Trends**: Tracks price history to help you spot market dips and spikes.
-- **Background Collector**: Runs silently in the background to build a local database of price history.
+- **Real-Time Data**: Fetches live market data from the [tarkov.dev API](https://tarkov.dev/api/) every 5 minutes
+- **Smart Analysis**: Automatically calculates **Profit**, **ROI**, **Profit Per Slot**, and **Risk Scores**
+- **Visual Dashboard**: Built with Streamlit for interactive sorting, filtering, and charting
+- **Historical Trends**: Tracks price history to help you spot market dips and spikes
+- **Background Collector**: Runs silently in the background to build a local database of price history
 
 ### 🤖 ML-Powered Analysis (v3.0)
 
-- **Adaptive Opportunity Scoring**: Multi-factor ML scoring that weighs profit, ROI, liquidity, and price position.
-- **Anomaly Detection**: Isolation Forest identifies unusual pricing patterns that may indicate arbitrage opportunities.
-- **Smart Clustering**: K-Means clustering groups items into strategy tiers (Elite, High Value, Solid, Avoid).
-- **Risk Assessment**: Comprehensive risk scoring based on volatility, liquidity, momentum, and margin.
-- **Trend Prediction**: Linear regression-based trend forecasting with confidence intervals.
-- **Similar Item Finder**: KNN-based similarity search to find alternative trading opportunities.
+- **Adaptive Opportunity Scoring**: Multi-factor ML scoring that weighs profit, ROI, liquidity, and price position
+- **Anomaly Detection**: Isolation Forest identifies unusual pricing patterns that may indicate arbitrage opportunities
+- **Smart Clustering**: K-Means clustering groups items into strategy tiers (Elite, High Value, Solid, Avoid)
+- **Risk Assessment**: Comprehensive risk scoring based on volatility, liquidity, momentum, and margin
+- **Trend Prediction**: Linear regression-based trend forecasting with confidence intervals
+- **Similar Item Finder**: KNN-based similarity search to find alternative trading opportunities
 
 ### 📊 Enhanced Visualizations
 
-- **3D Opportunity Space**: Interactive 3D scatter plot of profit dimensions.
-- **Risk vs Reward Quadrant**: Visual strategy guide with annotated zones.
-- **Correlation Heatmaps**: Discover relationships between price factors.
-- **Market Intelligence Dashboard**: Comprehensive multi-panel analysis view.
+- **Risk vs Reward Quadrant**: Visual strategy guide with annotated zones
+- **Correlation Heatmaps**: Discover relationships between price factors
+- **Market Intelligence Dashboard**: Comprehensive multi-panel analysis view
+- **Price History Charts**: Track any item's price over time
 
-## 🚀 Quick Start (Windows)
-
-### Option 1: Dashboard + Collector (Recommended)
-
-Double-click **`run.bat`**.
-
-- Launches the GUI dashboard.
-- Automatically starts the data collector in the background.
-- **Note**: Closing the dashboard window will stop the data collector.
-
-### Option 2: 24/7 Data Collection (Advanced)
-
-Double-click **`run_collector.bat`**.
-
-- Runs _only_ the data collector in a terminal window.
-- Keeps collecting data even if you close the dashboard.
-- You can still open the dashboard using `run.bat` to view the data.
+---
 
 ## 🛠️ Manual Installation (Linux / macOS / Advanced)
 
-If you prefer the command line:
+If you prefer manual setup or are on Linux/macOS:
 
 ```bash
-# 1. Create a virtual environment
-python -m venv .venv
+# 1. Clone the repository
+git clone https://github.com/Diobyte/Tarkov-TraderProfitGUI.git
+cd Tarkov-TraderProfitGUI
 
-# 2. Activate it
-# Windows:
-.venv\Scripts\activate
+# 2. Create a virtual environment
+python3 -m venv .venv
+
+# 3. Activate it
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Windows CMD:
+.venv\Scripts\activate.bat
 # Linux/macOS:
 source .venv/bin/activate
 
-# 3. Install dependencies
+# 4. Install dependencies
 pip install -r requirements.txt
 
-# 4. Start the Dashboard
+# 5. Start the data collector (in background or separate terminal)
+python collector.py &
+
+# 6. Start the Dashboard
 streamlit run app.py
 ```
 
-_Note: The dashboard allows you to start/stop the background data collector directly from the sidebar. Alternatively, you can run `python collector.py` in a separate terminal._
+---
 
-## 📊 Usage Guide
-
-### The Dashboard
+## 📊 Dashboard Guide
 
 Once the app is running, your browser will open to `http://localhost:8501`.
 
-- **Filters (Sidebar)**:
-  - **Min Profit**: Filter out low-value items.
-  - **Min ROI**: Ensure your investment yields a good percentage return.
-  - **Trend Window**: Adjust how far back (in hours) the ML model looks for volatility analysis.
-- **Tabs**:
-  - **Market Table**: The main view. Sort by Profit, ROI, or Discount.
-  - **Visual Analysis**: Scatter plots showing Risk vs. Reward.
-  - **Item History**: Deep dive into a specific item's price over time.
-  - **Data Review**: View raw data, check all metrics, and export to CSV.
-  - **Console**: View system logs for debugging.
+### Sidebar Filters
+
+- **Min Profit**: Filter out low-value items
+- **Min ROI**: Ensure your investment yields a good percentage return
+- **Category**: Focus on specific item types
+- **Search**: Find specific items by name
+
+### Main Tabs
+
+| Tab                     | Description                                 |
+| ----------------------- | ------------------------------------------- |
+| 🏆 **Top Trades**       | Best profit opportunities sorted by profit  |
+| 🌐 **Market Explorer**  | Browse ALL items with advanced filtering    |
+| 🎨 **Visual Analytics** | Charts, heatmaps, and market visualizations |
+| 📈 **ML Insights**      | Machine learning analysis and risk scoring  |
+| 🔍 **Item Details**     | Deep dive into specific item price history  |
+| ⚙️ **System**           | Collector status, database stats, logs      |
 
 ### The Collector
 
-The `collector.py` script runs in the background.
+- Fetches data every **5 minutes**
+- Stores data in `tarkov_data.db` (SQLite)
+- Automatically cleans up data older than **7 days**
+- Start/stop directly from the **System** tab
 
-- It fetches data every **5 minutes**.
-- It stores data in `tarkov_data.db` (SQLite).
-- It automatically cleans up data older than **7 days** to keep the database small.
-- You can start/stop it directly from the Dashboard sidebar.
+---
+
+## 🧪 Running Tests
+
+```bash
+# Activate virtual environment first, then:
+pytest tests/ -v
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### "Python not found" Error
+
+The launcher should install Python automatically. If it fails:
+
+1. Install [Python 3.12](https://www.python.org/downloads/) manually
+2. During installation, check **"Add Python to PATH"**
+3. Re-run `run.bat`
+
+### "Winget not found" Error
+
+Winget comes with Windows 10 (1809+) and Windows 11. If missing:
+
+1. Install from [Microsoft Store](https://apps.microsoft.com/store/detail/app-installer/9NBLGGH4NNS1)
+2. Or install Python manually from [python.org](https://www.python.org/downloads/)
+
+### Dashboard won't open in browser
+
+- Check the terminal for the URL (usually `http://localhost:8501`)
+- Try opening it manually in your browser
+- Check if port 8501 is blocked by firewall
+
+### "Database locked" errors
+
+- Make sure only one collector instance is running
+- Check the **System** tab to manage collector processes
+
+---
 
 ## 🤝 Attribution
 
 This project relies on the excellent [Tarkov.dev API](https://github.com/the-hideout/tarkov-api).
 
 - **Data Source**: [tarkov.dev](https://tarkov.dev/)
-- **API License**: GPL-3.0 (Note: This project uses the public API and does not bundle their source code).
+- **API License**: GPL-3.0 (Note: This project uses the public API and does not bundle their source code)
+
+---
 
 ## 📄 License
 
@@ -115,11 +229,11 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 ---
 
-_Not affiliated with Battlestate Games._
-
 ## 🔒 Security
 
 Please review our security policy in [SECURITY.md](SECURITY.md).
-If you find a vulnerability, submit a private advisory via GitHub Security
-Advisories for this repository or open an issue labeled `security` without
-public exploit details.
+If you find a vulnerability, submit a private advisory via GitHub Security Advisories or open an issue labeled `security`.
+
+---
+
+_Not affiliated with Battlestate Games._
