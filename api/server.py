@@ -11,19 +11,27 @@ import logging
 import uvicorn
 from contextlib import asynccontextmanager
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from strawberry.fastapi import GraphQLRouter
-
-# Import schema and database
-from api.schema import schema
-import database
-import config
-import version
+# Import from parent package - these work when running as a module
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from strawberry.fastapi import GraphQLRouter
+    from api.schema import schema
+    import database
+    import config
+    import version
+except ImportError:
+    # Fallback for direct script execution
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from strawberry.fastapi import GraphQLRouter
+    from api.schema import schema
+    import database
+    import config
+    import version
 
 # Configure logging
 log_file = os.path.join(config.LOGS_DIR, "api.log")

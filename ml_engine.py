@@ -23,8 +23,11 @@ import warnings
 import logging
 from datetime import datetime
 
-# Suppress sklearn convergence warnings that are expected with small datasets
-warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
+# Suppress specific sklearn warnings that are expected with small datasets
+# Only suppress ConvergenceWarning and DataConversionWarning, not all UserWarnings
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore', message='.*n_samples.*', category=UserWarning, module='sklearn')
+    warnings.filterwarnings('ignore', message='.*n_clusters.*', category=UserWarning, module='sklearn')
 
 import config
 from model_persistence import get_model_persistence, ModelPersistence

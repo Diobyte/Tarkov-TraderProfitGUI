@@ -131,31 +131,31 @@ def run_query(
                 data = response.json()
                 # Check for GraphQL errors
                 if 'errors' in data:
-                    logging.error("GraphQL errors: %s", data['errors'])
+                    logger.error("GraphQL errors: %s", data['errors'])
                     return None
                 return data
             except ValueError:
-                logging.error("Failed to decode JSON response.")
+                logger.error("Failed to decode JSON response.")
                 return None
         elif response.status_code == 429:
-            logging.warning("Rate limited by API. Will retry on next scheduled run.")
+            logger.warning("Rate limited by API. Will retry on next scheduled run.")
             return None
         else:
-            logging.error("Query failed with code %d: %s", response.status_code, response.text[:200])
+            logger.error("Query failed with code %d: %s", response.status_code, response.text[:200])
             return None
     except requests.Timeout:
-        logging.error("API request timed out after %d seconds.", config.API_TIMEOUT_SECONDS)
+        logger.error("API request timed out after %d seconds.", config.API_TIMEOUT_SECONDS)
         return None
     except requests.ConnectionError:
-        logging.error("API connection error. Check your internet connection.")
+        logger.error("API connection error. Check your internet connection.")
         return None
     except Exception as e:
-        logging.error("Error querying API: %s", e)
+        logger.error("Error querying API: %s", e)
         return None
 
 def fetch_and_store_data() -> None:
     start_time = time.time()
-    logging.info("Fetching data...")
+    logger.info("Fetching data...")
     
     query = """
     query GetItems($offset: Int, $limit: Int) {
@@ -221,11 +221,11 @@ def fetch_and_store_data() -> None:
     limit = 1000
     
     while True:
-        logging.info("Fetching items offset=%d limit=%d...", offset, limit)
+        logger.info("Fetching items offset=%d limit=%d...", offset, limit)
         result = run_query(query, variables={"offset": offset, "limit": limit})
         
         if not result or 'data' not in result or 'items' not in result['data']:
-            logging.warning("No data returned from API or error occurred.")
+            logger.warning("No data returned from API or error occurred.")
             break
 
         items = result['data']['items']
@@ -242,7 +242,7 @@ def fetch_and_store_data() -> None:
         # Be nice to the API
         time.sleep(0.5)
 
-    logging.info("Fetched total %d items from API. Processing...", len(all_items))
+    logger.info("Fetched total %d items from API. Processing...", len(all_items))
     
     batch_data = []
     current_time = datetime.now()
@@ -358,15 +358,15 @@ def fetch_and_store_data() -> None:
     if batch_data:
         database.save_prices_batch(batch_data)
         duration = time.time() - start_time
-        logging.info("Stored %d items in %.2f seconds.", len(batch_data), duration)
+        logger.info("Stored %d items in %.2f seconds.", len(batch_data), duration)
         
         # Train the ML model on the new data
         try:
             train_model_on_batch(batch_data)
         except Exception as e:
-            logging.warning("Model training failed (non-critical): %s", e)
+            logger.warning("Model training failed (non-critical): %s", e)
     else:
-        logging.info("No profitable items found or API error.")
+        logger.info("No profitable items found or API error.")
 
 
 def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
@@ -392,16 +392,16 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
     
     # Validate batch_data structure
     if not isinstance(batch_data, list):
-        logging.warning("train_model_on_batch received non-list data: %s", type(batch_data))
+        logger.warning("train_model_on_batch received non-list data: %s", type(batch_data))
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
     
     if not all(isinstance(item, (tuple, list)) for item in batch_data):
-        logging.warning("train_model_on_batch received invalid item types in batch")
+        logger.warning("train_model_on_batch received invalid item types in batch")
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
     
     # Check for minimum column count
     if batch_data and len(batch_data[0]) < 15:
-        logging.warning("train_model_on_batch received data with insufficient columns: %d", len(batch_data[0]))
+        logger.warning("train_model_on_batch received data with insufficient columns: %d", len(batch_data[0]))
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training
@@ -427,7 +427,7 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
     ml_engine = get_ml_engine()
     result = ml_engine.train_on_data(df, save=True)
     
-    logging.info("Model training: %d items, %d profitable",
+    logger.info("Model training: %d items, %d profitable",
                 result['items_processed'], result['profitable_count'])
     
     return result
@@ -438,9 +438,9 @@ def cleanup_job() -> None:
     try:
         deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False)
         if deleted > 0:
-            logging.info("Cleaned up %d old records.", deleted)
+            logger.info("Cleaned up %d old records.", deleted)
     except Exception as e:
-        logging.error("Error during cleanup: %s", e)
+        logger.error("Error during cleanup: %s", e)
 
 
 def job() -> None:
@@ -448,7 +448,7 @@ def job() -> None:
     try:
         fetch_and_store_data()
     except Exception as e:
-        logging.error("Job failed: %s", e)
+        logger.error("Job failed: %s", e)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -463,7 +463,7 @@ if __name__ == "__main__":
         f.write(str(os.getpid()))
 
     database.init_db()
-    logging.info("Starting collector (Standalone: %s)...", args.standalone)
+    logger.info("Starting collector (Standalone: %s)...", args.standalone)
     
     try:
         # Check last run time to respect rate limits
@@ -474,7 +474,7 @@ if __name__ == "__main__":
             time_since_last = datetime.now() - last_run
             if time_since_last < timedelta(minutes=config.COLLECTION_INTERVAL_MINUTES):
                 should_run_immediately = False
-                logging.info(
+                logger.info(
                     "Last run was %s ago. Skipping immediate run to respect %d-minute rate limit.",
                     time_since_last, config.COLLECTION_INTERVAL_MINUTES
                 )
@@ -491,9 +491,9 @@ if __name__ == "__main__":
             schedule.run_pending()
             time.sleep(1)
     except KeyboardInterrupt:
-        logging.info("Collector stopped by user.")
+        logger.info("Collector stopped by user.")
     except Exception as e:
-        logging.critical("Collector crashed: %s", e)
+        logger.critical("Collector crashed: %s", e)
     finally:
         if os.path.exists(pid_file):
             try:

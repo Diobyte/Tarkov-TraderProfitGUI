@@ -6,16 +6,22 @@ Uses Strawberry for modern, type-safe GraphQL in Python.
 
 import strawberry
 from typing import List, Optional
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import database
-import config
-from utils import calculate_metrics
 import pandas as pd
+
+# Import from parent package - these work when running as a module
+# or when the parent directory is in PYTHONPATH
+try:
+    import database
+    import config
+    from utils import calculate_metrics
+except ImportError:
+    # Fallback for direct script execution
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import database
+    import config
+    from utils import calculate_metrics
 
 
 # =============================================================================
