@@ -668,7 +668,10 @@ def render_stats(df: pd.DataFrame) -> None:
 # TOP OPPORTUNITIES CARDS
 # =============================================================================
 def render_top_opportunities(df: pd.DataFrame) -> None:
-    """Render top 6 trading opportunities as visual cards.
+    """Render top 6 trading opportunities as visual cards with ML insights.
+    
+    Uses persistent ML learning to rank opportunities by learned
+    profitability, consistency, and trend direction.
     
     Args:
         df: DataFrame containing filtered market data sorted by profit.
@@ -676,15 +679,31 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
     if df.empty:
         return
     
-    st.markdown("### 🏆 Top Opportunities")
+    st.markdown("### 🏆 Top ML-Ranked Opportunities")
+    st.caption("Ranked by learned profitability, consistency, and market trends")
     
-    # Filter to reliable volume items only (>= 5 offers) and get top 6 by profit
+    # Filter to reliable volume items only (>= 5 offers)
     reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
     if reliable_df.empty:
         st.info("No items with sufficient market volume found.")
         return
     
-    top = reliable_df.nlargest(6, 'profit')
+    # Use ML engine for ranking
+    ml_engine = get_ml_engine()
+    
+    try:
+        # Get ML-ranked recommendations
+        ml_df = ml_engine.enrich_with_learned_data(reliable_df.copy())
+        ml_df = ml_engine.calculate_opportunity_score_ml(ml_df)
+        
+        # Sort by ML score instead of just profit
+        if 'ml_opportunity_score' in ml_df.columns:
+            top = ml_df.nlargest(6, 'ml_opportunity_score')
+        else:
+            top = reliable_df.nlargest(6, 'profit')
+    except Exception as e:
+        logging.warning(f"ML ranking failed, using profit: {e}")
+        top = reliable_df.nlargest(6, 'profit')
     
     cols = st.columns(3)
     for i, (_, item) in enumerate(top.iterrows()):
@@ -694,11 +713,26 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
             
             profit_color = COLORS['profit'] if item['profit'] > 0 else COLORS['loss']
             
+            # Get trend indicator if available
+            trend_icon = ""
+            if 'learned_data_points' in item and item.get('learned_data_points', 0) >= 6:
+                learned_score = item.get('learned_score_adjustment', 0)
+                if learned_score > 5:
+                    trend_icon = " 📈"
+                elif learned_score < -5:
+                    trend_icon = " 📉"
+                else:
+                    trend_icon = " ➡️"
+            
+            # Get ML score if available
+            ml_score = item.get('ml_opportunity_score', 0)
+            consistency = item.get('learned_consistency', 50)
+            
             st.markdown(f"""
             <div class="profit-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <span style="font-size: 1.5rem;">{medal}</span>
-                    <span class="profit-amount" style="color: {profit_color};">+₽{item['profit']:,.0f}</span>
+                    <span class="profit-amount" style="color: {profit_color};">+₽{item['profit']:,.0f}{trend_icon}</span>
                 </div>
                 <div class="item-name">{item['name'][:35]}{'...' if len(item['name']) > 35 else ''}</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px;">
@@ -711,12 +745,12 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
                         <div class="stat-value">₽{item['trader_price']:,.0f}</div>
                     </div>
                     <div>
-                        <div class="stat-label">ROI</div>
-                        <div class="stat-value" style="color: {profit_color};">{item['roi']:.1f}%</div>
+                        <div class="stat-label">ML Score</div>
+                        <div class="stat-value" style="color: {profit_color};">{ml_score:.0f}</div>
                     </div>
                 </div>
                 <div style="margin-top: 8px; color: #6B7280; font-size: 0.8rem;">
-                    {item['trader_name']} • {item['category']}
+                    {item['trader_name']} • {item['category']} • {item.get('last_offer_count', 0):.0f} offers
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -725,7 +759,10 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
 # MAIN DATA TABLE
 # =============================================================================
 def render_data_table(df: pd.DataFrame) -> None:
-    """Render the main data table with top 50 recommended trades.
+    """Render the main data table with top 50 ML-recommended trades.
+    
+    Uses persistent learning to rank items by learned profitability
+    and consistency rather than just current profit.
     
     Args:
         df: DataFrame containing filtered market data.
@@ -734,8 +771,8 @@ def render_data_table(df: pd.DataFrame) -> None:
         st.info("No items match your filters.")
         return
     
-    st.markdown("### 🏆 Top Recommended Trades")
-    st.caption(f"Items with ≥{config.VOLUME_MIN_FOR_RECOMMENDATION} offers and best profit potential.")
+    st.markdown("### 🏆 Top ML-Recommended Trades")
+    st.caption(f"Items with ≥{config.VOLUME_MIN_FOR_RECOMMENDATION} offers, ranked by learned profitability and consistency.")
     
     # Filter to items with reliable volume
     reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
@@ -744,27 +781,75 @@ def render_data_table(df: pd.DataFrame) -> None:
         st.warning("No items with sufficient market volume. Try adjusting filters.")
         return
     
-    # Prepare display dataframe - show top recommended
-    display_df = reliable_df[[
-        'icon_link', 'name', 'profit', 'roi', 'flea_price', 
-        'trader_price', 'trader_name', 'category', 'last_offer_count'
-    ]].copy()
+    # Enrich with ML data
+    ml_engine = get_ml_engine()
     
-    display_df = display_df.sort_values('profit', ascending=False).head(50)
+    try:
+        ml_df = ml_engine.enrich_with_learned_data(reliable_df.copy())
+        ml_df = ml_engine.calculate_opportunity_score_ml(ml_df)
+        
+        # Add trend indicator column
+        def get_trend_emoji(row):
+            learned_adj = row.get('learned_score_adjustment', 0)
+            if learned_adj > 5:
+                return '📈'
+            elif learned_adj < -5:
+                return '📉'
+            elif row.get('learned_data_points', 0) >= 6:
+                return '➡️'
+            else:
+                return '🆕'
+        
+        ml_df['trend'] = ml_df.apply(get_trend_emoji, axis=1)
+        
+        # Sort by ML score
+        if 'ml_opportunity_score' in ml_df.columns:
+            ml_df = ml_df.sort_values('ml_opportunity_score', ascending=False)
+        else:
+            ml_df = ml_df.sort_values('profit', ascending=False)
+    except Exception as e:
+        logging.warning(f"ML enrichment failed: {e}")
+        ml_df = reliable_df.copy()
+        ml_df['trend'] = '❓'
+        ml_df = ml_df.sort_values('profit', ascending=False)
+    
+    # Prepare display dataframe
+    display_cols = ['icon_link', 'name', 'trend', 'profit', 'roi', 'flea_price', 
+                   'trader_price', 'trader_name', 'category', 'last_offer_count']
+    
+    # Add ML score if available
+    if 'ml_opportunity_score' in ml_df.columns:
+        display_cols.insert(4, 'ml_opportunity_score')
+    
+    # Only include columns that exist
+    display_cols = [c for c in display_cols if c in ml_df.columns]
+    
+    display_df = ml_df[display_cols].head(50)
+    
+    # Calculate dynamic max ROI for progress bar (ROI can exceed 100%)
+    max_roi = max(display_df['roi'].max() if 'roi' in display_df.columns else 100, 100)
+    
+    column_config = {
+        "icon_link": st.column_config.ImageColumn("", width=50),
+        "name": st.column_config.TextColumn("Item", width=180),
+        "trend": st.column_config.TextColumn("Trend", width=50),
+        "profit": st.column_config.NumberColumn("Profit", format="₽%d", width=90),
+        "roi": st.column_config.ProgressColumn("ROI", format="%.1f%%", min_value=0, max_value=max_roi, width=90),
+        "flea_price": st.column_config.NumberColumn("Flea", format="₽%d", width=90),
+        "trader_price": st.column_config.NumberColumn("Trader", format="₽%d", width=90),
+        "trader_name": st.column_config.TextColumn("Trader", width=80),
+        "category": st.column_config.TextColumn("Category", width=100),
+        "last_offer_count": st.column_config.NumberColumn("Offers", width=65),
+    }
+    
+    if 'ml_opportunity_score' in display_cols:
+        column_config["ml_opportunity_score"] = st.column_config.ProgressColumn(
+            "ML Score", format="%.0f", min_value=0, max_value=100, width=80
+        )
     
     st.dataframe(
         display_df,
-        column_config={
-            "icon_link": st.column_config.ImageColumn("", width=50),
-            "name": st.column_config.TextColumn("Item", width=200),
-            "profit": st.column_config.NumberColumn("Profit", format="₽%d", width=100),
-            "roi": st.column_config.ProgressColumn("ROI", format="%.1f%%", min_value=0, max_value=100, width=100),
-            "flea_price": st.column_config.NumberColumn("Flea", format="₽%d", width=100),
-            "trader_price": st.column_config.NumberColumn("Trader", format="₽%d", width=100),
-            "trader_name": st.column_config.TextColumn("Trader", width=80),
-            "category": st.column_config.TextColumn("Category", width=120),
-            "last_offer_count": st.column_config.NumberColumn("Offers", width=70),
-        },
+        column_config=column_config,
         hide_index=True,
         use_container_width=True,
         height=500
@@ -1337,7 +1422,7 @@ def render_visual_analytics(df: pd.DataFrame) -> None:
 # ANALYTICS CHARTS
 # =============================================================================
 def render_analytics(df: pd.DataFrame) -> None:
-    """Render analytics visualizations with ML insights.
+    """Render analytics visualizations with ML insights and trend learning.
     
     Args:
         df: DataFrame containing filtered market data.
@@ -1346,9 +1431,16 @@ def render_analytics(df: pd.DataFrame) -> None:
         st.info("Not enough data for analytics.")
         return
     
-    st.markdown("### 📈 Market Analytics")
+    st.markdown("### 📈 ML-Powered Market Analytics")
     
-    tab1, tab2, tab3 = st.tabs(["Profit Analysis", "Category Breakdown", "ML Insights"])
+    ml_engine = get_ml_engine()
+    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Profit Analysis", 
+        "🧠 Learning Status",
+        "📈 Trend Insights",
+        "🎯 Category Performance"
+    ])
     
     with tab1:
         col1, col2 = st.columns(2)
@@ -1392,66 +1484,17 @@ def render_analytics(df: pd.DataFrame) -> None:
                 height=350
             )
             st.plotly_chart(fig, use_container_width=True)
-    
-    with tab2:
-        col1, col2 = st.columns(2)
         
-        with col1:
-            # Category profit
-            cat_stats = df.groupby('category').agg({
-                'profit': 'mean',
-                'name': 'count'
-            }).reset_index()
-            cat_stats.columns = ['Category', 'Avg Profit', 'Items']
-            cat_stats = cat_stats.nlargest(10, 'Avg Profit')
-            
-            fig = px.bar(
-                cat_stats, y='Category', x='Avg Profit',
-                orientation='h', title='Top Categories by Avg Profit',
-                color='Avg Profit',
-                color_continuous_scale=[[0, COLORS['loss']], [0.5, COLORS['warning']], [1, COLORS['profit']]],
-                template='plotly_dark'
-            )
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color=COLORS['text'],
-                height=400,
-                showlegend=False
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            # Category pie
-            profitable = df[df['profit'] > 0]
-            cat_counts = profitable.groupby('category').size().reset_index(name='count')
-            cat_counts = cat_counts.nlargest(8, 'count')
-            
-            fig = px.pie(
-                cat_counts, values='count', names='category',
-                title='Profitable Items by Category',
-                hole=0.4,
-                template='plotly_dark'
-            )
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color=COLORS['text'],
-                height=400
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
-        # ML Analysis
+        # ML Analysis if enough items
         if len(df) >= 10:
-            ml_engine = get_ml_engine()
             ml_df = ml_engine.calculate_opportunity_score_ml(df.copy())
             ml_df = ml_engine.calculate_risk_score(ml_df)
             ml_df = ml_engine.cluster_items(ml_df)
             
-            col1, col2 = st.columns(2)
+            col3, col4 = st.columns(2)
             
-            with col1:
-                # Risk vs Opportunity
+            with col3:
+                # Risk vs Opportunity Matrix
                 fig = px.scatter(
                     ml_df, x='risk_score', y='ml_opportunity_score',
                     color='cluster_label', size='profit',
@@ -1469,7 +1512,7 @@ def render_analytics(df: pd.DataFrame) -> None:
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
-            with col2:
+            with col4:
                 # Cluster distribution
                 cluster_stats = ml_df.groupby('cluster_label').agg({
                     'profit': ['mean', 'count'],
@@ -1487,8 +1530,214 @@ def render_analytics(df: pd.DataFrame) -> None:
                         "Avg Risk": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f"),
                     }
                 )
+    
+    with tab2:
+        # Learning Status Dashboard
+        st.markdown("#### 🧠 Persistent Model Learning Status")
+        st.caption("The model continuously learns and improves, surviving database cleanups.")
+        
+        learning_status = ml_engine.get_persistent_learning_status()
+        
+        # Learning quality metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            quality = learning_status.get('overall_quality', 0)
+            st.metric(
+                "Learning Quality",
+                f"{quality:.0f}%",
+                help="Overall model learning quality based on data volume"
+            )
+        
+        with col2:
+            st.metric(
+                "Items Learned",
+                f"{learning_status.get('unique_items_learned', 0):,}",
+                help="Number of unique items the model has learned about"
+            )
+        
+        with col3:
+            st.metric(
+                "Training Sessions",
+                f"{learning_status.get('total_sessions', 0):,}",
+                help="Number of data collection cycles used for training"
+            )
+        
+        with col4:
+            st.metric(
+                "Total Samples",
+                f"{learning_status.get('total_samples', 0):,}",
+                help="Total number of data points processed"
+            )
+        
+        # Quality breakdown
+        st.markdown("#### Learning Quality Breakdown")
+        
+        quality_data = pd.DataFrame({
+            'Metric': ['Items Coverage', 'Session History', 'Sample Volume'],
+            'Quality': [
+                learning_status.get('items_quality', 0),
+                learning_status.get('sessions_quality', 0),
+                learning_status.get('samples_quality', 0)
+            ]
+        })
+        
+        fig = px.bar(
+            quality_data,
+            x='Metric', y='Quality',
+            title='Learning Quality by Component',
+            template='plotly_dark',
+            color='Quality',
+            color_continuous_scale='Viridis'
+        )
+        fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color=COLORS['text'],
+            height=300,
+            yaxis_range=[0, 100]
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Last updated
+        if learning_status.get('last_updated'):
+            st.caption(f"Last model update: {learning_status['last_updated']}")
+    
+    with tab3:
+        # Trend Insights
+        st.markdown("#### 📈 Learned Item Trends")
+        st.caption("Items ranked by learned profitability and consistency over time.")
+        
+        top_learned = ml_engine.get_top_learned_items(20)
+        
+        if top_learned:
+            trend_df = pd.DataFrame(top_learned)
+            
+            # Display top learned items - consistency score is 0-100
+            fig = px.bar(
+                trend_df.head(15),
+                x='profit_mean',
+                y='item_id',
+                orientation='h',
+                color='consistency_score',
+                color_continuous_scale='RdYlGn',
+                range_color=[0, 100],  # Consistency is 0-100 scale
+                title='Top 15 Items by Learned Profitability',
+                template='plotly_dark',
+                hover_data=['category', 'data_points']
+            )
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color=COLORS['text'],
+                height=450,
+                yaxis={'categoryorder': 'total ascending'},
+                coloraxis_colorbar_title='Consistency %'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Data table
+            st.markdown("#### Detailed Trend Data")
+            st.dataframe(
+                trend_df,
+                column_config={
+                    "item_id": st.column_config.TextColumn("Item ID", width=200),
+                    "profit_mean": st.column_config.NumberColumn("Avg Profit", format="₽%.0f"),
+                    "consistency_score": st.column_config.ProgressColumn("Consistency", min_value=0, max_value=100),
+                    "data_points": st.column_config.NumberColumn("Data Points"),
+                    "category": st.column_config.TextColumn("Category"),
+                    "trader": st.column_config.TextColumn("Best Trader"),
+                },
+                hide_index=True,
+                use_container_width=True
+            )
         else:
-            st.info("Need at least 10 items for ML analysis.")
+            st.info("No trend data available yet. Keep the collector running to build trend history.")
+    
+    with tab4:
+        # Category Performance
+        st.markdown("#### 🎯 Learned Category Performance")
+        st.caption("Category rankings based on historical profitability patterns.")
+        
+        category_trends = ml_engine.get_category_performance()
+        
+        if category_trends:
+            cat_df = pd.DataFrame(category_trends)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Category profit chart - color by profitability rate (0-100%)
+                cat_df_profit = cat_df.head(12).copy()
+                
+                fig = px.bar(
+                    cat_df_profit,
+                    x='avg_profit',
+                    y='category',
+                    orientation='h',
+                    color='profitable_rate',
+                    color_continuous_scale='RdYlGn',
+                    range_color=[0, 1],  # Ensure full 0-100% range is used
+                    title='Top Categories by Avg Profit',
+                    template='plotly_dark'
+                )
+                fig.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color=COLORS['text'],
+                    height=400,
+                    yaxis={'categoryorder': 'total ascending'},
+                    coloraxis_colorbar_title='Profit %',
+                    coloraxis_colorbar_tickformat='.0%'  # Show as percentage
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Category weight chart - weight is a multiplier (1.0 = neutral)
+                # Color by how far from neutral (1.0) the weight is
+                cat_df_chart = cat_df.head(12).copy()
+                cat_df_chart['weight_deviation'] = cat_df_chart['weight'] - 1.0  # Positive = boosted, negative = penalized
+                
+                fig = px.bar(
+                    cat_df_chart,
+                    x='weight',
+                    y='category',
+                    orientation='h',
+                    color='weight_deviation',
+                    color_continuous_scale='RdYlGn',  # Red for low weight, Green for high weight
+                    color_continuous_midpoint=0,  # Center on neutral (1.0 weight = 0 deviation)
+                    title='Category Learned Weights (1.0 = Neutral)',
+                    template='plotly_dark'
+                )
+                fig.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color=COLORS['text'],
+                    height=400,
+                    yaxis={'categoryorder': 'total ascending'},
+                    coloraxis_colorbar_title='Boost'  # Shows deviation from neutral weight
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Full table - convert profitable_rate to percentage for display
+            cat_df_display = cat_df.copy()
+            cat_df_display['profitable_pct'] = cat_df_display['profitable_rate'] * 100
+            
+            st.dataframe(
+                cat_df_display,
+                column_config={
+                    "category": st.column_config.TextColumn("Category"),
+                    "avg_profit": st.column_config.NumberColumn("Avg Profit", format="₽%.0f"),
+                    "profitable_pct": st.column_config.ProgressColumn("Profit Rate", min_value=0, max_value=100, format="%.0f%%"),
+                    "weight": st.column_config.NumberColumn("Weight", format="%.2f"),
+                    "total_items": st.column_config.NumberColumn("Items Tracked"),
+                    "profitable_rate": None,  # Hide the raw 0-1 column
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("No category data available yet. Keep the collector running to build category insights.")
 
 # =============================================================================
 # ITEM DETAIL VIEW

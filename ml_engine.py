@@ -8,6 +8,7 @@ This module provides sophisticated ML algorithms for:
 - Risk assessment and portfolio optimization
 - Time-series analysis for optimal trading windows
 - Historical trend learning for improved recommendations over time
+- Persistent model training that survives database cleanups
 """
 
 import pandas as pd
@@ -22,6 +23,7 @@ import logging
 from datetime import datetime, timedelta
 
 import config
+from model_persistence import get_model_persistence, ModelPersistence
 
 __all__ = ['TarkovMLEngine', 'get_ml_engine']
 
@@ -41,6 +43,7 @@ class TarkovMLEngine:
     - Profit trend prediction
     - Risk assessment
     - Historical trend learning for improved recommendations
+    - Persistent model state that survives database cleanups
     
     Attributes:
         scaler: RobustScaler for handling outliers common in game economies.
@@ -49,6 +52,7 @@ class TarkovMLEngine:
         item_clusterer: Optional clustering model.
         trend_data: Cached historical trend data for items.
         profit_stats: Global profit statistics for calibration.
+        persistence: Model persistence layer for saving/loading state.
     """
     
     def __init__(self) -> None:
@@ -62,6 +66,8 @@ class TarkovMLEngine:
         self.trend_data: Optional[pd.DataFrame] = None
         self.profit_stats: Optional[Dict[str, Any]] = None
         self._last_trend_update: Optional[datetime] = None
+        # Persistent model storage
+        self.persistence: ModelPersistence = get_model_persistence()
     
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -451,6 +457,192 @@ class TarkovMLEngine:
         
         # Rank by enhanced score
         features['trend_rank'] = features['trend_enhanced_score'].rank(ascending=False)
+        
+        return features
+    
+    def train_on_data(self, df: pd.DataFrame, save: bool = True) -> Dict[str, Any]:
+        """
+        Train the model on new data and update persistent learned state.
+        
+        This method updates the model's learned parameters from the current
+        market data. The learned state persists across database cleanups,
+        allowing continuous improvement over time.
+        
+        Args:
+            df: DataFrame with current market data.
+            save: Whether to save state to disk after training.
+            
+        Returns:
+            Dict with training statistics.
+        """
+        if df.empty:
+            return {'status': 'no_data', 'items_processed': 0}
+        
+        items_processed = 0
+        profitable_count = 0
+        
+        # Update item statistics
+        for _, row in df.iterrows():
+            item_id = row.get('item_id', '')
+            if not item_id:
+                continue
+            
+            profit = row.get('profit', 0)
+            flea_price = row.get('flea_price', 0)
+            offers = row.get('last_offer_count', 0)
+            category = row.get('category', 'Unknown')
+            trader = row.get('trader_name', 'Unknown')
+            
+            self.persistence.update_item_statistics(
+                item_id=item_id,
+                profit=profit,
+                flea_price=flea_price,
+                offers=int(offers),
+                category=category,
+                trader=trader
+            )
+            
+            # Update category and trader stats
+            is_profitable = profit > 0
+            self.persistence.update_category_performance(category, profit, is_profitable)
+            self.persistence.update_trader_reliability(trader, profit)
+            
+            items_processed += 1
+            if is_profitable:
+                profitable_count += 1
+        
+        # Update calibration
+        if len(df) > 0:
+            profit_mean = df['profit'].mean()
+            profit_std = df['profit'].std() if len(df) > 1 else 1
+            roi_mean = df['roi'].mean() if 'roi' in df.columns else 0
+            roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1
+            
+            self.persistence.update_calibration(
+                profit_mean=profit_mean,
+                profit_std=profit_std if not np.isnan(profit_std) else 1,
+                roi_mean=roi_mean if not np.isnan(roi_mean) else 0,
+                roi_std=roi_std if not np.isnan(roi_std) else 1
+            )
+        
+        # Record training session
+        avg_profit = df['profit'].mean() if len(df) > 0 else 0
+        self.persistence.record_training_session(
+            items_processed=items_processed,
+            profitable_count=profitable_count,
+            avg_profit=avg_profit
+        )
+        
+        # Save to disk
+        if save:
+            self.persistence.save_state()
+            self.persistence.save_history()
+        
+        logger.info(f"Trained on {items_processed} items, {profitable_count} profitable")
+        
+        return {
+            'status': 'success',
+            'items_processed': items_processed,
+            'profitable_count': profitable_count,
+            'avg_profit': avg_profit,
+        }
+    
+    def get_learned_item_score(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get learned score adjustments for a specific item.
+        
+        Args:
+            item_id: The item ID to look up.
+            
+        Returns:
+            Dict with learned stats or None if item not tracked.
+        """
+        stats = self.persistence.get_item_learned_stats(item_id)
+        if not stats:
+            return None
+        
+        return {
+            'item_id': item_id,
+            'learned_profit_mean': stats['profit_mean'],
+            'learned_consistency': stats['consistency_score'],
+            'data_points': stats['count'],
+            'first_seen': stats['first_seen'],
+            'last_seen': stats['last_seen'],
+        }
+    
+    def enrich_with_learned_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enrich current data with persistently learned statistics.
+        
+        This adds columns from the learned model state that persist
+        even after database cleanup.
+        
+        Args:
+            df: Current market data DataFrame.
+            
+        Returns:
+            DataFrame with additional learned columns.
+        """
+        if df.empty:
+            return df
+        
+        features = df.copy()
+        
+        # Add learned profit mean
+        learned_profit = []
+        learned_consistency = []
+        learned_data_points = []
+        category_weights = []
+        trader_reliability = []
+        
+        for _, row in features.iterrows():
+            item_id = row.get('item_id', '')
+            category = row.get('category', 'Unknown')
+            trader = row.get('trader_name', 'Unknown')
+            
+            # Item-specific learned data
+            item_stats = self.persistence.get_item_learned_stats(item_id)
+            if item_stats and item_stats['count'] >= config.TREND_MIN_DATA_POINTS:
+                learned_profit.append(item_stats['profit_mean'])
+                learned_consistency.append(item_stats['consistency_score'])
+                learned_data_points.append(item_stats['count'])
+            else:
+                learned_profit.append(None)
+                learned_consistency.append(None)
+                learned_data_points.append(0)
+            
+            # Category and trader weights
+            category_weights.append(self.persistence.get_category_weight(category))
+            trader_reliability.append(self.persistence.get_trader_reliability(trader))
+        
+        features['learned_profit_mean'] = learned_profit
+        features['learned_consistency'] = learned_consistency
+        features['learned_data_points'] = learned_data_points
+        features['category_weight'] = category_weights
+        features['trader_reliability'] = trader_reliability
+        
+        # Fill NaN learned values with current values (avoiding deprecation warning)
+        learned_profit_mask = features['learned_profit_mean'].isna()
+        features.loc[learned_profit_mask, 'learned_profit_mean'] = features.loc[learned_profit_mask, 'profit']
+        consistency_mask = features['learned_consistency'].isna()
+        features.loc[consistency_mask, 'learned_consistency'] = 50
+        
+        # Calculate learned-adjusted score
+        # Items with high learned consistency get boosted
+        has_learned = features['learned_data_points'] >= config.TREND_MIN_DATA_POINTS
+        
+        features['learned_score_adjustment'] = np.where(
+            has_learned,
+            (features['learned_consistency'] - 50) / 50 * 20,  # -20 to +20 adjustment
+            0
+        )
+        
+        # Profit trend vs learned (is current profit above/below historical average?)
+        features['profit_vs_learned'] = np.where(
+            has_learned & (features['learned_profit_mean'].abs() > 1),
+            (features['profit'] - features['learned_profit_mean']) / features['learned_profit_mean'].abs(),
+            0
+        )
         
         return features
     
@@ -942,14 +1134,16 @@ class TarkovMLEngine:
                                          player_level: int = 15,
                                          capital: int = 1000000,
                                          risk_tolerance: str = 'medium',
-                                         use_trends: bool = True) -> pd.DataFrame:
+                                         use_trends: bool = True,
+                                         use_learned: bool = True) -> pd.DataFrame:
         """
         Generate personalized trading recommendations based on player profile.
         
         Applies all analysis methods and filters results based on player's
         level, available capital, and risk tolerance preferences. When trend
         learning is enabled, recommendations improve over time as more
-        historical data is collected.
+        historical data is collected. Persistent learned data survives
+        database cleanups.
         
         Args:
             df: DataFrame with market data for analysis.
@@ -957,6 +1151,7 @@ class TarkovMLEngine:
             capital: Available roubles for trading.
             risk_tolerance: 'low', 'medium', or 'high' risk preference.
             use_trends: Whether to use historical trend learning (default True).
+            use_learned: Whether to use persistently learned data (default True).
             
         Returns:
             DataFrame of recommended items sorted by recommendation score,
@@ -965,12 +1160,18 @@ class TarkovMLEngine:
         if df.empty:
             return df
         
+        # Enrich with persistently learned data
+        if use_learned:
+            features = self.enrich_with_learned_data(df)
+        else:
+            features = df.copy()
+        
         # Apply all analyses with optional trend learning
         if use_trends:
             # Use trend-enhanced scoring
-            features = self.get_trend_enhanced_score(df)
+            features = self.get_trend_enhanced_score(features)
         else:
-            features = self.calculate_opportunity_score_ml(df)
+            features = self.calculate_opportunity_score_ml(features)
             
         features = self.detect_arbitrage_anomalies(features)
         features = self.calculate_risk_score(features)
@@ -991,7 +1192,7 @@ class TarkovMLEngine:
         features['max_units'] = (capital // features['flea_price']).clip(lower=0)
         features['potential_profit'] = features['max_units'] * features['profit']
         
-        # Final recommendation score - now uses trend-enhanced score when available
+        # Final recommendation score - now uses trend-enhanced score and learned data
         base_score = features.get('trend_enhanced_score', features.get('ml_opportunity_score', 50))
         
         # Add trend bonuses to final score
@@ -1002,14 +1203,25 @@ class TarkovMLEngine:
         
         consistency_factor = features.get('consistency_score', 50) / 100  # 0-1 scale
         
-        features['rec_score'] = (
-            base_score * 0.35 +
-            (100 - features['risk_score']) * 0.25 +
-            features['cluster_confidence'] * 100 * 0.10 +
-            features.get('liquidity_score', 50) * 0.15 +
-            consistency_factor * 15 +  # Up to 15 points for consistency
-            trend_direction_bonus  # ±5 points for trend
-        ).clip(0, 100)
+        # Learned score adjustment from persistent data
+        learned_adjustment = features.get('learned_score_adjustment', 0)
+        
+        # Category and trader weights from learned data
+        cat_weight = features.get('category_weight', 1.0)
+        trader_rel = features.get('trader_reliability', 0.5)
+        
+        features['rec_score'] = np.clip(
+            base_score * 0.30 +
+            (100 - features['risk_score']) * 0.20 +
+            features['cluster_confidence'] * 100 * 0.08 +
+            features.get('liquidity_score', 50) * 0.12 +
+            consistency_factor * 12 +  # Up to 12 points for consistency
+            trend_direction_bonus +  # ±5 points for trend
+            learned_adjustment +  # Up to ±20 points from learned data
+            (cat_weight - 1) * 10 +  # ±5 points from category performance
+            (trader_rel - 0.5) * 10,  # ±5 points from trader reliability
+            0, 100
+        )
         
         # Filter to accessible items within risk tolerance AND sufficient volume
         # This filters out unreliable 1-5 offer items
@@ -1039,6 +1251,9 @@ class TarkovMLEngine:
                 'Stable': '➡️',
                 'Unknown': '❓'
             }).fillna('❓')
+        
+        # Add learned data indicator
+        recommended['has_learned_data'] = recommended.get('learned_data_points', 0) >= config.TREND_MIN_DATA_POINTS
         
         return recommended.sort_values('rec_score', ascending=False)
     
@@ -1116,6 +1331,50 @@ class TarkovMLEngine:
             'first_seen': row.get('first_seen'),
             'last_seen': row.get('last_seen')
         }
+    
+    def get_persistent_learning_status(self) -> Dict[str, Any]:
+        """
+        Get the status of persistent model learning.
+        
+        Returns comprehensive information about the persistently learned
+        model state that survives database cleanups.
+        
+        Returns:
+            Dict with persistent learning status and metrics.
+        """
+        return self.persistence.get_learning_progress()
+    
+    def get_top_learned_items(self, n: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get top items by learned profitability.
+        
+        Args:
+            n: Number of top items to return.
+            
+        Returns:
+            List of dicts with item trend information.
+        """
+        return self.persistence.get_item_trends(top_n=n)
+    
+    def get_category_performance(self) -> List[Dict[str, Any]]:
+        """
+        Get learned category performance data.
+        
+        Returns:
+            List of dicts with category performance metrics.
+        """
+        return self.persistence.get_category_trends()
+    
+    def save_model(self) -> bool:
+        """
+        Save the current model state to disk.
+        
+        Returns:
+            True if save was successful.
+        """
+        success1 = self.persistence.save_state()
+        success2 = self.persistence.save_history()
+        return success1 and success2
 
 
 # Singleton instance

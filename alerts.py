@@ -1,0 +1,367 @@
+"""
+Alert System for Tarkov Trader Profit Analysis.
+
+This module provides price alert functionality to notify users when
+items reach profitable thresholds or unusual market conditions occur.
+"""
+
+import json
+import os
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List, Callable
+from dataclasses import dataclass, field, asdict
+from enum import Enum
+
+import config
+
+__all__ = [
+    'AlertType', 'AlertPriority', 'Alert', 'AlertManager', 'get_alert_manager'
+]
+
+logger = logging.getLogger(__name__)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ALERTS_FILE = os.path.join(BASE_DIR, 'price_alerts.json')
+ALERT_HISTORY_FILE = os.path.join(BASE_DIR, 'alert_history.json')
+
+
+class AlertType(Enum):
+    """Types of alerts that can be triggered."""
+    PROFIT_THRESHOLD = "profit_threshold"
+    PRICE_DROP = "price_drop"
+    PRICE_SPIKE = "price_spike"
+    HIGH_ROI = "high_roi"
+    VOLUME_SURGE = "volume_surge"
+    ARBITRAGE_OPPORTUNITY = "arbitrage_opportunity"
+    ITEM_WATCHLIST = "item_watchlist"
+    CATEGORY_ALERT = "category_alert"
+
+
+class AlertPriority(Enum):
+    """Priority levels for alerts."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+@dataclass
+class Alert:
+    """Represents a single alert configuration or triggered alert."""
+    id: str
+    alert_type: str
+    item_id: Optional[str] = None
+    item_name: Optional[str] = None
+    category: Optional[str] = None
+    threshold_value: float = 0.0
+    threshold_type: str = "above"  # "above" or "below"
+    priority: str = "medium"
+    enabled: bool = True
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    last_triggered: Optional[str] = None
+    trigger_count: int = 0
+    cooldown_minutes: int = 30
+    message: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Alert':
+        """Create Alert from dictionary."""
+        return cls(**data)
+    
+    def can_trigger(self) -> bool:
+        """Check if alert can trigger based on cooldown."""
+        if not self.enabled:
+            return False
+        if self.last_triggered is None:
+            return True
+        try:
+            last = datetime.fromisoformat(self.last_triggered)
+            cooldown = timedelta(minutes=self.cooldown_minutes)
+            return datetime.now() > last + cooldown
+        except (ValueError, TypeError):
+            return True
+
+
+class AlertManager:
+    """
+    Manages price alerts and notifications.
+    
+    Supports:
+    - Custom profit threshold alerts per item
+    - Category-wide alerts
+    - Automatic high-opportunity alerts
+    - Alert history tracking
+    - Cooldown management
+    """
+    
+    def __init__(self) -> None:
+        """Initialize the alert manager."""
+        self.alerts_file = ALERTS_FILE
+        self.history_file = ALERT_HISTORY_FILE
+        self._alerts: Dict[str, Alert] = {}
+        self._history: List[Dict[str, Any]] = []
+        self._callbacks: List[Callable[[Alert, Dict[str, Any]], None]] = []
+        self._load_alerts()
+        self._load_history()
+    
+    def _load_alerts(self) -> None:
+        """Load alerts from file."""
+        if os.path.exists(self.alerts_file):
+            try:
+                with open(self.alerts_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    for alert_id, alert_data in data.items():
+                        self._alerts[alert_id] = Alert.from_dict(alert_data)
+                logger.info(f"Loaded {len(self._alerts)} alerts")
+            except Exception as e:
+                logger.warning(f"Failed to load alerts: {e}")
+                self._alerts = {}
+        else:
+            self._create_default_alerts()
+    
+    def _load_history(self) -> None:
+        """Load alert history from file."""
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    self._history = json.load(f)
+                # Keep only last 500 entries
+                self._history = self._history[-500:]
+            except Exception as e:
+                logger.warning(f"Failed to load alert history: {e}")
+                self._history = []
+    
+    def _create_default_alerts(self) -> None:
+        """Create default system alerts."""
+        defaults = [
+            Alert(
+                id="high_profit_auto",
+                alert_type=AlertType.PROFIT_THRESHOLD.value,
+                threshold_value=10000,
+                threshold_type="above",
+                priority=AlertPriority.HIGH.value,
+                message="Item has very high profit potential"
+            ),
+            Alert(
+                id="high_roi_auto",
+                alert_type=AlertType.HIGH_ROI.value,
+                threshold_value=50.0,
+                threshold_type="above",
+                priority=AlertPriority.MEDIUM.value,
+                message="Item has exceptional ROI"
+            ),
+            Alert(
+                id="arbitrage_auto",
+                alert_type=AlertType.ARBITRAGE_OPPORTUNITY.value,
+                threshold_value=0,
+                priority=AlertPriority.CRITICAL.value,
+                message="Unusual arbitrage opportunity detected"
+            ),
+        ]
+        for alert in defaults:
+            self._alerts[alert.id] = alert
+        self.save_alerts()
+    
+    def save_alerts(self) -> bool:
+        """Save alerts to file."""
+        try:
+            data = {aid: alert.to_dict() for aid, alert in self._alerts.items()}
+            with open(self.alerts_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save alerts: {e}")
+            return False
+    
+    def save_history(self) -> bool:
+        """Save alert history to file."""
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(self._history[-500:], f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save alert history: {e}")
+            return False
+    
+    def add_alert(self, alert: Alert) -> bool:
+        """Add a new alert."""
+        self._alerts[alert.id] = alert
+        return self.save_alerts()
+    
+    def remove_alert(self, alert_id: str) -> bool:
+        """Remove an alert by ID."""
+        if alert_id in self._alerts:
+            del self._alerts[alert_id]
+            return self.save_alerts()
+        return False
+    
+    def get_alert(self, alert_id: str) -> Optional[Alert]:
+        """Get alert by ID."""
+        return self._alerts.get(alert_id)
+    
+    def get_all_alerts(self) -> List[Alert]:
+        """Get all configured alerts."""
+        return list(self._alerts.values())
+    
+    def enable_alert(self, alert_id: str, enabled: bool = True) -> bool:
+        """Enable or disable an alert."""
+        if alert_id in self._alerts:
+            self._alerts[alert_id].enabled = enabled
+            return self.save_alerts()
+        return False
+    
+    def add_item_watchlist(self, item_id: str, item_name: str, 
+                           profit_threshold: float = 5000) -> str:
+        """Add an item to the watchlist with profit threshold."""
+        alert_id = f"watchlist_{item_id}"
+        alert = Alert(
+            id=alert_id,
+            alert_type=AlertType.ITEM_WATCHLIST.value,
+            item_id=item_id,
+            item_name=item_name,
+            threshold_value=profit_threshold,
+            threshold_type="above",
+            priority=AlertPriority.MEDIUM.value,
+            message=f"Watchlist item {item_name} reached profit threshold"
+        )
+        self.add_alert(alert)
+        return alert_id
+    
+    def register_callback(self, callback: Callable[[Alert, Dict[str, Any]], None]) -> None:
+        """Register a callback for when alerts are triggered."""
+        self._callbacks.append(callback)
+    
+    def check_alerts(self, market_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Check all alerts against current market data.
+        
+        Args:
+            market_data: List of item dicts with profit, roi, etc.
+            
+        Returns:
+            List of triggered alert notifications.
+        """
+        triggered = []
+        
+        for item in market_data:
+            item_id = item.get('item_id', '')
+            profit = item.get('profit', 0)
+            roi = item.get('roi', 0)
+            offers = item.get('last_offer_count', 0)
+            is_anomaly = item.get('is_anomaly', False)
+            
+            for alert in self._alerts.values():
+                if not alert.can_trigger():
+                    continue
+                
+                should_trigger = False
+                
+                # Check different alert types
+                if alert.alert_type == AlertType.PROFIT_THRESHOLD.value:
+                    if alert.item_id and alert.item_id != item_id:
+                        continue
+                    if alert.threshold_type == "above" and profit >= alert.threshold_value:
+                        should_trigger = True
+                    elif alert.threshold_type == "below" and profit <= alert.threshold_value:
+                        should_trigger = True
+                
+                elif alert.alert_type == AlertType.HIGH_ROI.value:
+                    if roi >= alert.threshold_value:
+                        should_trigger = True
+                
+                elif alert.alert_type == AlertType.ITEM_WATCHLIST.value:
+                    if alert.item_id == item_id and profit >= alert.threshold_value:
+                        should_trigger = True
+                
+                elif alert.alert_type == AlertType.ARBITRAGE_OPPORTUNITY.value:
+                    if is_anomaly and profit > 5000:
+                        should_trigger = True
+                
+                elif alert.alert_type == AlertType.CATEGORY_ALERT.value:
+                    if alert.category == item.get('category') and profit >= alert.threshold_value:
+                        should_trigger = True
+                
+                if should_trigger:
+                    notification = self._trigger_alert(alert, item)
+                    triggered.append(notification)
+        
+        if triggered:
+            self.save_alerts()
+            self.save_history()
+        
+        return triggered
+    
+    def _trigger_alert(self, alert: Alert, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Trigger an alert and record it."""
+        alert.last_triggered = datetime.now().isoformat()
+        alert.trigger_count += 1
+        
+        notification = {
+            'alert_id': alert.id,
+            'alert_type': alert.alert_type,
+            'priority': alert.priority,
+            'item_id': item.get('item_id'),
+            'item_name': item.get('name'),
+            'profit': item.get('profit'),
+            'roi': item.get('roi'),
+            'message': alert.message or f"Alert triggered for {item.get('name')}",
+            'triggered_at': alert.last_triggered,
+        }
+        
+        self._history.append(notification)
+        
+        # Call registered callbacks
+        for callback in self._callbacks:
+            try:
+                callback(alert, item)
+            except Exception as e:
+                logger.error(f"Alert callback failed: {e}")
+        
+        logger.info(f"Alert triggered: {alert.id} for {item.get('name')}")
+        return notification
+    
+    def get_recent_alerts(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get alerts triggered in the last N hours."""
+        cutoff = datetime.now() - timedelta(hours=hours)
+        recent = []
+        for entry in reversed(self._history):
+            try:
+                triggered_at = datetime.fromisoformat(entry.get('triggered_at', ''))
+                if triggered_at > cutoff:
+                    recent.append(entry)
+                else:
+                    break
+            except (ValueError, TypeError):
+                continue
+        return recent
+    
+    def get_alert_stats(self) -> Dict[str, Any]:
+        """Get alert statistics."""
+        total_alerts = len(self._alerts)
+        enabled_alerts = sum(1 for a in self._alerts.values() if a.enabled)
+        total_triggers = sum(a.trigger_count for a in self._alerts.values())
+        
+        return {
+            'total_alerts': total_alerts,
+            'enabled_alerts': enabled_alerts,
+            'disabled_alerts': total_alerts - enabled_alerts,
+            'total_triggers': total_triggers,
+            'history_count': len(self._history),
+        }
+
+
+# Singleton instance
+_alert_manager: Optional[AlertManager] = None
+
+
+def get_alert_manager() -> AlertManager:
+    """Get or create the alert manager singleton."""
+    global _alert_manager
+    if _alert_manager is None:
+        _alert_manager = AlertManager()
+    return _alert_manager

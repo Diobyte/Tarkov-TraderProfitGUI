@@ -18,12 +18,63 @@ __all__ = [
     'init_db', 'save_prices_batch', 'get_latest_prices', 'get_item_history',
     'get_market_trends', 'get_all_prices', 'cleanup_old_data', 'get_latest_timestamp',
     'clear_all_data', 'parse_timestamp', 'retry_db_op', 'DB_NAME',
-    'get_item_trend_data', 'get_profit_statistics'
+    'get_item_trend_data', 'get_profit_statistics', 'DatabaseConnection',
+    'get_database_health'
 ]
 
 # Ensure DB is always created in the same directory as this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, 'tarkov_data.db')
+
+
+class DatabaseConnection:
+    """
+    Context manager for database connections.
+    
+    Ensures proper connection handling and cleanup, with automatic
+    commit on success and rollback on error.
+    
+    Usage:
+        with DatabaseConnection() as (conn, cursor):
+            cursor.execute('SELECT * FROM prices')
+            rows = cursor.fetchall()
+    """
+    
+    def __init__(self, timeout: int = 30, readonly: bool = False) -> None:
+        """
+        Initialize the connection manager.
+        
+        Args:
+            timeout: Connection timeout in seconds.
+            readonly: If True, opens connection in read-only mode.
+        """
+        self.timeout = timeout
+        self.readonly = readonly
+        self.conn: Optional[sqlite3.Connection] = None
+        self.cursor: Optional[sqlite3.Cursor] = None
+    
+    def __enter__(self) -> Tuple['sqlite3.Connection', 'sqlite3.Cursor']:
+        """Open database connection."""
+        if self.readonly:
+            # Read-only connection via URI
+            uri = f"file:{DB_NAME}?mode=ro"
+            self.conn = sqlite3.connect(uri, timeout=self.timeout, uri=True)
+        else:
+            self.conn = sqlite3.connect(DB_NAME, timeout=self.timeout)
+        self.cursor = self.conn.cursor()
+        return self.conn, self.cursor
+    
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        """Close connection, commit if no errors, rollback otherwise."""
+        if self.cursor:
+            self.cursor.close()
+        if self.conn:
+            if exc_type is None:
+                self.conn.commit()
+            else:
+                self.conn.rollback()
+            self.conn.close()
+        return False  # Don't suppress exceptions
 
 
 def parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
@@ -181,8 +232,10 @@ def init_db() -> None:
 @retry_db_op()
 def save_prices_batch(items: List[Tuple]) -> None:
     """
-    Saves a list of items in a single transaction.
-    items: list of tuples/dicts matching the schema
+    Save a list of items to the database in a single transaction.
+    
+    Args:
+        items: List of tuples matching the database schema (15 or 25 columns).
     """
     if not items:
         return
@@ -227,7 +280,14 @@ def save_prices_batch(items: List[Tuple]) -> None:
 
 @retry_db_op()
 def get_latest_prices() -> List[Tuple]:
-    """Get the latest prices for all items."""
+    """Get the latest prices for all items.
+    
+    Uses a lookback window to capture items from recent collection cycles,
+    handling cases where the API returns partial item lists.
+    
+    Returns:
+        List of tuples containing price data for each item, sorted by profit.
+    """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     
@@ -288,7 +348,14 @@ def get_latest_prices() -> List[Tuple]:
 
 @retry_db_op()
 def get_item_history(item_id: str) -> List[Tuple]:
-    """Get the price history for a specific item."""
+    """Get the price history for a specific item.
+    
+    Args:
+        item_id: The unique identifier for the item.
+        
+    Returns:
+        List of tuples with (timestamp, flea_price, trader_price, profit).
+    """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -304,8 +371,13 @@ def get_item_history(item_id: str) -> List[Tuple]:
 @retry_db_op()
 def get_market_trends(hours: int = 6) -> List[Tuple]:
     """
-    Calculates volatility and average profit over the last X hours.
-    Returns a dictionary keyed by item_id.
+    Calculate volatility and average profit over the last X hours.
+    
+    Args:
+        hours: Number of hours to look back for trend data.
+        
+    Returns:
+        List of tuples with (item_id, avg_profit, min_profit, max_profit, data_points).
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -342,7 +414,12 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
 
 @retry_db_op()
 def get_all_prices() -> List[Tuple]:
-    """Get all prices from the database."""
+    """Get all prices from the database.
+    
+    Returns:
+        List of all price records as tuples with (item_id, name, flea_price,
+        trader_price, trader_name, profit, timestamp).
+    """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -356,8 +433,14 @@ def get_all_prices() -> List[Tuple]:
 @retry_db_op()
 def cleanup_old_data(days: int = 7, vacuum: bool = False) -> Optional[int]:
     """
-    Deletes records older than the specified number of days to keep the DB size manageable.
-    Vacuuming is optional as it can lock the database for a long time.
+    Delete records older than the specified number of days.
+    
+    Args:
+        days: Number of days to retain data for (default: 7).
+        vacuum: Whether to run VACUUM after deletion. Can lock database.
+        
+    Returns:
+        Number of records deleted, or None on error.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -398,7 +481,10 @@ def get_latest_timestamp() -> Optional[datetime]:
 @retry_db_op()
 def clear_all_data() -> None:
     """
-    Deletes ALL data from the prices table. Use with caution.
+    Delete ALL data from the prices table.
+    
+    Warning:
+        This operation cannot be undone. Use with caution.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -420,8 +506,8 @@ def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -
     
     Returns aggregated statistics per item over the time window including:
     - Count of data points
-    - Average, min, max, stddev of profit
-    - First and last observed profit (for trend direction)
+    - Average, min, max of profit
+    - First and last observed timestamps
     - Average offer count
     
     Args:
@@ -429,7 +515,8 @@ def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -
         hours: Number of hours to look back for trend data.
         
     Returns:
-        List of tuples with trend statistics per item.
+        List of tuples with (item_id, data_points, avg_profit, min_profit, max_profit,
+        avg_flea_price, avg_trader_price, avg_offers, first_seen, last_seen).
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -556,3 +643,84 @@ def get_profit_statistics(hours: int = 24) -> Dict[str, Any]:
         'avg_offers': 0,
         'data_hours': hours
     }
+
+
+@retry_db_op()
+def get_database_health() -> Dict[str, Any]:
+    """
+    Get database health metrics for monitoring.
+    
+    Returns:
+        Dict with database health information including:
+        - file_size: Size of database file in bytes
+        - total_records: Total number of records
+        - oldest_record: Timestamp of oldest record
+        - newest_record: Timestamp of newest record
+        - unique_items: Number of unique items tracked
+        - wal_size: Size of WAL file if exists
+        - status: 'healthy', 'warning', or 'error'
+    """
+    health: Dict[str, Any] = {
+        'status': 'healthy',
+        'file_size': 0,
+        'wal_size': 0,
+        'total_records': 0,
+        'unique_items': 0,
+        'oldest_record': None,
+        'newest_record': None,
+        'data_age_hours': 0,
+        'errors': [],
+    }
+    
+    # Check file sizes
+    try:
+        if os.path.exists(DB_NAME):
+            health['file_size'] = os.path.getsize(DB_NAME)
+        
+        wal_file = DB_NAME + '-wal'
+        if os.path.exists(wal_file):
+            health['wal_size'] = os.path.getsize(wal_file)
+    except OSError as e:
+        health['errors'].append(f"File access error: {e}")
+    
+    # Check database contents
+    try:
+        conn = sqlite3.connect(DB_NAME, timeout=30)
+        c = conn.cursor()
+        
+        # Get record counts
+        c.execute('SELECT COUNT(*), COUNT(DISTINCT item_id) FROM prices')
+        row = c.fetchone()
+        if row:
+            health['total_records'] = row[0] or 0
+            health['unique_items'] = row[1] or 0
+        
+        # Get time range
+        c.execute('SELECT MIN(timestamp), MAX(timestamp) FROM prices')
+        row = c.fetchone()
+        if row and row[0] and row[1]:
+            health['oldest_record'] = row[0]
+            health['newest_record'] = row[1]
+            
+            newest = parse_timestamp(row[1])
+            if newest:
+                age = datetime.now() - newest
+                health['data_age_hours'] = age.total_seconds() / 3600
+        
+        conn.close()
+        
+    except sqlite3.Error as e:
+        health['status'] = 'error'
+        health['errors'].append(f"Database error: {e}")
+    
+    # Determine health status
+    if health['errors']:
+        health['status'] = 'error'
+    elif health['data_age_hours'] > 2:
+        health['status'] = 'warning'
+        health['errors'].append("Data may be stale (>2 hours old)")
+    elif health['total_records'] == 0:
+        health['status'] = 'warning'
+        health['errors'].append("No data in database")
+    
+    return health

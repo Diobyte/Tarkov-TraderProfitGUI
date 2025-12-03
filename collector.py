@@ -12,8 +12,10 @@ import argparse
 import os
 from typing import Optional, Dict, Any
 from types import FrameType
+import pandas as pd
 
 import config
+from ml_engine import get_ml_engine
 
 # Configuration
 # Loaded from config.py
@@ -253,8 +255,49 @@ def fetch_and_store_data() -> None:
         database.save_prices_batch(batch_data)
         duration = time.time() - start_time
         logging.info(f"Stored {len(batch_data)} items in {duration:.2f} seconds.")
+        
+        # Train the ML model on the new data
+        try:
+            train_model_on_batch(batch_data)
+        except Exception as e:
+            logging.warning(f"Model training failed (non-critical): {e}")
     else:
         logging.info("No profitable items found or API error.")
+
+
+def train_model_on_batch(batch_data: list) -> None:
+    """
+    Train the ML model on the newly fetched batch of data.
+    
+    This allows the model to continuously learn and improve
+    recommendations over time. The learned state persists even
+    after database cleanup.
+    
+    Args:
+        batch_data: List of tuples with item data.
+    """
+    # Convert batch data to DataFrame for training
+    columns = [
+        'item_id', 'name', 'timestamp', 'flea_price', 'trader_price',
+        'trader_name', 'profit', 'icon_link', 'width', 'height',
+        'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category',
+        'base_price', 'high_24h_price', 'last_offer_count', 'short_name', 'wiki_link',
+        'trader_level_required', 'trader_task_unlock', 'price_velocity', 'liquidity_score',
+        'api_updated'
+    ]
+    
+    df = pd.DataFrame(batch_data, columns=columns)
+    
+    # Calculate ROI for training
+    df['roi'] = (df['profit'] / df['flea_price'] * 100).where(df['flea_price'] > 0, 0)
+    
+    # Get ML engine and train
+    ml_engine = get_ml_engine()
+    result = ml_engine.train_on_data(df, save=True)
+    
+    logging.info(f"Model training: {result['items_processed']} items, "
+                f"{result['profitable_count']} profitable")
+
 
 def cleanup_job() -> None:
     """Remove old data records to manage database size."""

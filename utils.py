@@ -1,7 +1,6 @@
 """Shared utility functions for Tarkov Trader Profit application."""
 
 import pandas as pd
-import numpy as np
 from typing import Optional, Union
 
 __all__ = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']

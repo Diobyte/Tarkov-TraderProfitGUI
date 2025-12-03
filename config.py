@@ -72,3 +72,28 @@ ITEM_LOCKS: Dict[str, int] = {
     "M80": 35,
     "Blackout CJB": 40,
 }
+
+# Alert Configuration
+ALERT_DEFAULT_COOLDOWN_MINUTES: int = 30  # Cooldown between alert triggers
+ALERT_HIGH_PROFIT_THRESHOLD: int = 10000  # Threshold for high profit alerts
+ALERT_HIGH_ROI_THRESHOLD: float = 50.0  # Threshold for high ROI alerts
+ALERT_MAX_HISTORY: int = 500  # Maximum alert history entries
+
+# Export Configuration
+EXPORT_MAX_ROWS: int = 1000  # Maximum rows to export at once
+EXPORT_CLEANUP_DAYS: int = 7  # Delete exports older than this
+
+# Performance Configuration
+DATABASE_CONNECTION_TIMEOUT: int = 30  # Database connection timeout in seconds
+DATABASE_RETRY_ATTEMPTS: int = 5  # Number of retry attempts for DB operations
+DATABASE_RETRY_DELAY: float = 1.0  # Delay between retries in seconds
+
+# UI Configuration
+UI_REFRESH_INTERVAL_SECONDS: int = 60  # Auto-refresh interval
+UI_MAX_TABLE_ROWS: int = 100  # Maximum rows in data tables
+UI_CHART_HEIGHT: int = 400  # Default chart height in pixels
+
+# Data Quality Configuration
+MIN_PROFIT_FOR_DISPLAY: int = 0  # Minimum profit to show item
+MIN_OFFERS_FOR_RELIABLE: int = 5  # Minimum offers for reliable data
+MAX_PRICE_AGE_HOURS: int = 1  # Maximum age of price data to consider fresh
