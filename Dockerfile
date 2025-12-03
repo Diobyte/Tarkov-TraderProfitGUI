@@ -6,7 +6,7 @@
 # ==============================================================================
 # Stage 1: Builder - Install dependencies with build tools
 # ==============================================================================
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ==============================================================================
 # Stage 2: Production image - Minimal runtime
 # ==============================================================================
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 # Build arguments for version labeling (set by CI/CD)
 ARG VERSION=dev
