@@ -309,13 +309,17 @@ CATEGORY_LOCKS: Dict[str, int] = {
     
     # === BARTER ITEMS ===
     "Electronics": 20,
-    "Battery": 20,  # Energy elements
+    "Battery": 20,  # API category name
+    "Energy elements": 20,  # Handbook category name for batteries
     "Flammable": 20,
-    "Fuel": 20,  # Flammable materials
-    "Lubricant": 20,  # Flammable materials
+    "Flammable materials": 20,  # Handbook category name
+    "Fuel": 20,
+    "Lubricant": 20,
     "Household goods": 20,
     "Household material": 20,
-    "Building material": 20,  # Household-like
+    "Household materials": 20,  # Handbook category name
+    "Building material": 20,
+    "Building materials": 20,  # Handbook category name
     "Medical supply": 20,
     "Medical supplies": 20,
     "Valuable": 30,
