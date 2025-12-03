@@ -15,7 +15,7 @@ from io import StringIO, BytesIO
 
 import pandas as pd
 
-__all__ = ['DataExporter', 'ExportFormat']
+__all__ = ['DataExporter', 'ExportFormat', 'get_exporter']
 
 logger = logging.getLogger(__name__)
 
@@ -123,9 +123,12 @@ class DataExporter:
             # Limit sheet name to 31 characters (Excel limit)
             safe_sheet_name = sheet_name[:31] if len(sheet_name) > 31 else sheet_name
             # Also ensure sheet name doesn't contain invalid characters
-            invalid_chars = [':', '\\', '/', '?', '*', '[', ']']
+            invalid_chars = [':', '\\', '/', '?', '*', '[', ']', "'", '"']
             for char in invalid_chars:
                 safe_sheet_name = safe_sheet_name.replace(char, '_')
+            # Ensure sheet name is not empty after sanitization
+            if not safe_sheet_name.strip():
+                safe_sheet_name = "Data"
             df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
             logger.info("Exported %d rows to %s", len(df), filename)
         except ImportError:
@@ -323,16 +326,19 @@ class DataExporter:
         cutoff = datetime.now() - timedelta(days=days)
         deleted = 0
         
+        if not os.path.exists(self.export_dir):
+            return 0
+        
         for filename in os.listdir(self.export_dir):
             filepath = os.path.join(self.export_dir, filename)
             if os.path.isfile(filepath):
-                mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if mtime < cutoff:
-                    try:
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                    if mtime < cutoff:
                         os.remove(filepath)
                         deleted += 1
-                    except Exception as e:
-                        logger.warning("Failed to delete %s: %s", filepath, e)
+                except (OSError, ValueError) as e:
+                    logger.warning("Failed to delete %s: %s", filepath, e)
         
         if deleted:
             logger.info("Cleaned up %d old export files", deleted)

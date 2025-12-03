@@ -3,6 +3,10 @@
 
 All configuration values can be overridden via environment variables
 using the pattern TARKOV_{CONSTANT_NAME}.
+
+Example:
+    export TARKOV_COLLECTION_INTERVAL_MINUTES=10
+    export TARKOV_DATA_RETENTION_DAYS=14
 """
 
 import os

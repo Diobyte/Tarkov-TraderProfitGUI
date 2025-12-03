@@ -313,6 +313,9 @@ def train_model_on_batch(batch_data: list) -> None:
     Args:
         batch_data: List of tuples with item data.
     """
+    if not batch_data:
+        return
+        
     # Convert batch data to DataFrame for training
     columns = [
         'item_id', 'name', 'timestamp', 'flea_price', 'trader_price',
@@ -325,8 +328,11 @@ def train_model_on_batch(batch_data: list) -> None:
     
     df = pd.DataFrame(batch_data, columns=columns)
     
-    # Calculate ROI for training
-    df['roi'] = (df['profit'] / df['flea_price'] * 100).where(df['flea_price'] > 0, 0)
+    # Calculate ROI for training, handling division by zero
+    df['roi'] = df.apply(
+        lambda row: (row['profit'] / row['flea_price'] * 100) if row['flea_price'] > 0 else 0, 
+        axis=1
+    )
     
     # Get ML engine and train
     ml_engine = get_ml_engine()

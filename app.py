@@ -77,16 +77,24 @@ def start_collector() -> bool:
         return True
     try:
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        with open("collector_startup.log", "a") as log:
+        # Ensure we're running from the correct directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        collector_path = os.path.join(script_dir, "collector.py")
+        
+        with open(os.path.join(script_dir, "collector_startup.log"), "a") as log:
             proc = subprocess.Popen(
-                [sys.executable, "-u", "collector.py"],
-                creationflags=flags, stdout=log, stderr=subprocess.STDOUT
+                [sys.executable, "-u", collector_path],
+                creationflags=flags, stdout=log, stderr=subprocess.STDOUT,
+                cwd=script_dir
             )
         time.sleep(2)
         if proc.poll() is None:
             with open(PID_FILE, 'w') as f:
                 f.write(str(proc.pid))
+            logging.info("Collector started with PID %d", proc.pid)
             return True
+        else:
+            logging.error("Collector process exited immediately")
     except Exception as e:
         logging.error("Failed to start collector: %s", e)
     return False
@@ -630,7 +638,7 @@ def render_header() -> None:
     st.markdown('<p class="hero-subtitle">Buy from Flea → Sell to Traders → Stack Roubles</p>', unsafe_allow_html=True)
     
     # Status bar
-    col1, col2, col3, col4 = st.columns([1, 2, 1, 1.2])
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
         running, pid, mode = is_collector_running()
@@ -657,53 +665,6 @@ def render_header() -> None:
         if st.button("🔄 Refresh", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-
-    # Database & ML health indicator
-    with col4:
-        try:
-            db_health = database.get_database_health()
-        except Exception as e:  # pragma: no cover - defensive
-            logging.error("Failed to get database health: %s", e)
-            db_health = {
-                'status': 'error',
-                'data_age_hours': 0,
-                'total_records': 0,
-                'errors': ['Failed to read database health'],
-            }
-
-        from ml_engine import get_ml_engine  # local import to avoid cycles
-
-        try:
-            ml_engine = get_ml_engine()
-            learning_status = ml_engine.get_trend_learning_status()
-        except Exception as e:  # pragma: no cover - defensive
-            logging.error("Failed to get ML learning status: %s", e)
-            learning_status = {
-                'enabled': False,
-                'learning_quality': 0,
-                'items_with_history': 0,
-            }
-
-        status = str(db_health.get('status', 'unknown')).lower()
-        color = '#00D26A' if status == 'healthy' else ('#FFA502' if status == 'warning' else '#FF4757')
-        age_hours = float(db_health.get('data_age_hours', 0) or 0)
-        ml_quality = float(learning_status.get('learning_quality', 0) or 0)
-
-        st.markdown(
-            f"""
-            <div style="border-radius: 10px; padding: 8px 10px; border: 1px solid #2d3748; background: #111827;">
-              <div style="font-size: 0.75rem; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">System Health</div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                <span style="font-size: 0.85rem; color: {color}; font-weight: 600;">DB: {status.title()}</span>
-                <span style="font-size: 0.75rem; color: #9CA3AF;">Age: {age_hours:.1f}h</span>
-              </div>
-              <div style="margin-top: 4px; font-size: 0.75rem; color: #9CA3AF;">
-                ML Learning: {ml_quality:.0f}%
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
 # =============================================================================
 # STATS OVERVIEW

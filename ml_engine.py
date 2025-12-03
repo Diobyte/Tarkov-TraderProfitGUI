@@ -337,11 +337,14 @@ class TarkovMLEngine:
         # Calculate trend metrics per item
         # Profit volatility (normalized std dev)
         trend_df['profit_range'] = trend_df['max_profit'] - trend_df['min_profit']
+        avg_profit_abs = trend_df['avg_profit'].abs()
         trend_df['historical_volatility'] = np.where(
-            trend_df['avg_profit'].abs() > 1,
-            trend_df['profit_range'] / trend_df['avg_profit'].abs(),
+            avg_profit_abs > 1,
+            trend_df['profit_range'] / avg_profit_abs,
             0
         )
+        # Replace any inf or NaN values
+        trend_df['historical_volatility'] = trend_df['historical_volatility'].replace([np.inf, -np.inf], 0).fillna(0)
         
         # Calculate consistency score (0-100)
         # Items that are always profitable and have low volatility score higher
@@ -379,11 +382,14 @@ class TarkovMLEngine:
         
         # Calculate profit trend (current vs historical)
         # Positive = improving, Negative = declining
+        historical_avg_abs = features['historical_avg_profit'].abs()
         features['profit_trend'] = np.where(
-            features['historical_avg_profit'].abs() > 1,
-            (features['profit'] - features['historical_avg_profit']) / features['historical_avg_profit'].abs(),
+            historical_avg_abs > 1,
+            (features['profit'] - features['historical_avg_profit']) / historical_avg_abs,
             0
         )
+        # Replace any inf or NaN values
+        features['profit_trend'] = features['profit_trend'].replace([np.inf, -np.inf], 0).fillna(0)
         
         # Classify trend direction
         def classify_trend(trend_val: float) -> str:
@@ -523,18 +529,20 @@ class TarkovMLEngine:
             roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1.0
             
             # Handle NaN values from empty or single-row series
-            if pd.isna(profit_std):
+            if pd.isna(profit_mean):
+                profit_mean = 0
+            if pd.isna(profit_std) or profit_std == 0:
                 profit_std = 1.0
             if pd.isna(roi_mean):
                 roi_mean = 0
-            if pd.isna(roi_std):
+            if pd.isna(roi_std) or roi_std == 0:
                 roi_std = 1.0
             
             self.persistence.update_calibration(
-                profit_mean=profit_mean,
-                profit_std=profit_std,
-                roi_mean=roi_mean,
-                roi_std=roi_std
+                profit_mean=float(profit_mean),
+                profit_std=float(profit_std),
+                roi_mean=float(roi_mean),
+                roi_std=float(roi_std)
             )
         
         # Record training session
@@ -703,8 +711,15 @@ class TarkovMLEngine:
         
         # Adaptive weighting based on data characteristics
         # Items with high variance in a feature get less weight (unstable signal)
-        feature_stability = 1 / (X.std() + 0.01)
-        feature_stability = feature_stability / feature_stability.sum()
+        feature_std = X.std()
+        # Replace zeros with small value to avoid division by zero
+        feature_stability = 1 / (feature_std.replace(0, 0.01) + 0.01)
+        stability_sum = feature_stability.sum()
+        if stability_sum > 0 and not pd.isna(stability_sum):
+            feature_stability = feature_stability / stability_sum
+        else:
+            # Fallback to uniform weights if sum is zero or NaN
+            feature_stability = pd.Series(1.0 / len(score_features), index=feature_stability.index)
         
         # Base weights (domain knowledge) - volume gets significant weight
         base_weights = {
@@ -724,8 +739,14 @@ class TarkovMLEngine:
         
         # Combine base weights with adaptive weights
         weights = np.array([base_weights.get(f, 0.05) for f in score_features])
-        weights = weights * feature_stability.values
-        weights = weights / weights.sum()  # Renormalize
+        # Ensure feature_stability values are valid floats
+        stability_values = feature_stability.fillna(1.0 / len(score_features)).values
+        weights = weights * stability_values
+        weight_sum = weights.sum()
+        if weight_sum > 0 and not np.isnan(weight_sum):
+            weights = weights / weight_sum  # Renormalize
+        else:
+            weights = np.ones(len(score_features)) / len(score_features)
         
         # Calculate weighted score
         # Invert price_position (lower is better - buying near the low)
@@ -735,7 +756,10 @@ class TarkovMLEngine:
             elif feat == 'market_saturation':
                 X_scaled[:, i] = 1 - X_scaled[:, i]  # Lower saturation is better
         
-        features['ml_opportunity_score'] = (X_scaled @ weights) * 100
+        # Handle potential NaN values in X_scaled
+        X_scaled = np.nan_to_num(X_scaled, nan=0.5, posinf=1.0, neginf=0.0)
+        
+        features['ml_opportunity_score'] = np.clip((X_scaled @ weights) * 100, 0, 100)
         
         # Rank within dataset
         features['opportunity_rank'] = features['ml_opportunity_score'].rank(ascending=False)
@@ -947,7 +971,9 @@ class TarkovMLEngine:
         
         # Add cluster confidence (distance to centroid)
         distances = kmeans.transform(X_scaled)
-        features['cluster_confidence'] = 1 / (1 + distances.min(axis=1))
+        # Handle edge cases with distances
+        min_distances = distances.min(axis=1)
+        features['cluster_confidence'] = 1 / (1 + np.nan_to_num(min_distances, nan=1.0, posinf=1.0, neginf=0.0))
         
         return features
     
@@ -987,6 +1013,9 @@ class TarkovMLEngine:
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         
+        # Handle NaN/inf in scaled features
+        X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+        
         # Find neighbors
         nn = NearestNeighbors(n_neighbors=min(n_neighbors + 1, len(df)))
         nn.fit(X_scaled)
@@ -1002,7 +1031,8 @@ class TarkovMLEngine:
         similar_distances = distances[0][1:]
         
         result = features.iloc[similar_indices].copy()
-        result['similarity_score'] = 1 / (1 + similar_distances)
+        # Handle edge cases in similarity score calculation
+        result['similarity_score'] = 1 / (1 + np.nan_to_num(similar_distances, nan=1.0, posinf=1.0, neginf=0.0))
         
         return result
     
@@ -1058,6 +1088,9 @@ class TarkovMLEngine:
         X = np.arange(len(df)).reshape(-1, 1)
         y = np.array(df['profit'].values, dtype=np.float64)  # Ensure numpy array type with explicit dtype
         
+        # Replace any NaN/inf values in y
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+        
         model = Ridge(alpha=1.0)
         model.fit(X, y)
         
@@ -1067,11 +1100,15 @@ class TarkovMLEngine:
         
         # Confidence based on R² and stability
         train_score = model.score(X, y)
+        # Clamp train_score to valid range
+        train_score = max(0.0, min(1.0, train_score)) if not np.isnan(train_score) else 0.0
         profit_mean = df['profit'].mean()
         profit_std = df['profit'].std()
         # Handle NaN from std() on single-element series
-        if pd.isna(profit_std):
-            profit_std = 0
+        if pd.isna(profit_std) or profit_std == 0:
+            profit_std = 1.0
+        if pd.isna(profit_mean):
+            profit_mean = 0.0
         # Avoid division by zero when mean is -1 or close to it
         volatility = float(profit_std / max(abs(profit_mean) + 1, 1))
         confidence = max(0.0, min(100.0, float(train_score) * 100 * (1 - min(volatility, 1.0))))
@@ -1402,12 +1439,18 @@ class TarkovMLEngine:
         return success1 and success2
 
 
-# Singleton instance
-_ml_engine = None
+# Singleton instance with thread-safe initialization
+import threading
+_ml_engine: Optional[TarkovMLEngine] = None
+_ml_engine_lock = threading.Lock()
+
 
 def get_ml_engine() -> TarkovMLEngine:
-    """Get or create the ML engine singleton."""
+    """Get or create the ML engine singleton (thread-safe)."""
     global _ml_engine
     if _ml_engine is None:
-        _ml_engine = TarkovMLEngine()
+        with _ml_engine_lock:
+            # Double-check locking pattern
+            if _ml_engine is None:
+                _ml_engine = TarkovMLEngine()
     return _ml_engine

@@ -55,14 +55,18 @@ class DatabaseConnection:
     
     def __enter__(self) -> Tuple['sqlite3.Connection', 'sqlite3.Cursor']:
         """Open database connection."""
-        if self.readonly:
-            # Read-only connection via URI
-            uri = f"file:{DB_NAME}?mode=ro"
-            self.conn = sqlite3.connect(uri, timeout=self.timeout, uri=True)
-        else:
-            self.conn = sqlite3.connect(DB_NAME, timeout=self.timeout)
-        self.cursor = self.conn.cursor()
-        return self.conn, self.cursor
+        try:
+            if self.readonly:
+                # Read-only connection via URI
+                uri = f"file:{DB_NAME}?mode=ro"
+                self.conn = sqlite3.connect(uri, timeout=self.timeout, uri=True)
+            else:
+                self.conn = sqlite3.connect(DB_NAME, timeout=self.timeout)
+            self.cursor = self.conn.cursor()
+            return self.conn, self.cursor
+        except sqlite3.Error as e:
+            logging.error("Failed to connect to database: %s", e)
+            raise
     
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         """Close connection, commit if no errors, rollback otherwise."""
@@ -468,7 +472,7 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     c = conn.cursor()
     cutoff_date = datetime.now() - timedelta(days=days)
     c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date.isoformat(),))
-    deleted_count = c.rowcount or 0  # Ensure we return int, not None
+    deleted_count = c.rowcount if c.rowcount is not None else 0  # Ensure we return int, not None
     conn.commit()
     
     # Only vacuum if explicitly requested and we deleted something
@@ -490,18 +494,22 @@ def get_latest_timestamp() -> Optional[datetime]:
     Returns:
         datetime object of the most recent record, or None if no data.
     """
+    conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=30)
         c = conn.cursor()
         c.execute('SELECT MAX(timestamp) FROM prices')
         result = c.fetchone()
-        conn.close()
         
         if result and result[0]:
             return parse_timestamp(result[0])
         return None
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        logging.warning("Failed to get latest timestamp: %s", e)
         return None
+    finally:
+        if conn:
+            conn.close()
 
 @retry_db_op()
 def clear_all_data() -> None:

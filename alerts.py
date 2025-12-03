@@ -8,7 +8,7 @@ import json
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Union
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from tempfile import NamedTemporaryFile
@@ -26,11 +26,13 @@ ALERTS_FILE = os.path.join(BASE_DIR, 'price_alerts.json')
 ALERT_HISTORY_FILE = os.path.join(BASE_DIR, 'alert_history.json')
 
 
-def _atomic_json_dump(file_path: str, payload: Dict[str, Any] | List[Dict[str, Any]]) -> None:
+def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
     """Write JSON data atomically to avoid corrupting alert files."""
     directory = os.path.dirname(file_path)
     if directory:
         os.makedirs(directory, exist_ok=True)
+    
+    temp_name: Optional[str] = None
     try:
         with NamedTemporaryFile('w', delete=False, dir=directory or '.', encoding='utf-8') as tmp:
             json.dump(payload, tmp, indent=2, default=str)
@@ -39,6 +41,12 @@ def _atomic_json_dump(file_path: str, payload: Dict[str, Any] | List[Dict[str, A
             temp_name = tmp.name
         os.replace(temp_name, file_path)
     except OSError as e:
+        # Clean up temp file if it exists
+        if temp_name and os.path.exists(temp_name):
+            try:
+                os.remove(temp_name)
+            except OSError:
+                pass
         # Fall back to direct write if atomic write fails
         logger.warning("Atomic write failed, using direct write: %s", e)
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -381,13 +389,18 @@ class AlertManager:
         }
 
 
-# Singleton instance
+# Singleton instance with thread-safe initialization
+import threading
 _alert_manager: Optional[AlertManager] = None
+_alert_manager_lock = threading.Lock()
 
 
 def get_alert_manager() -> AlertManager:
-    """Get or create the alert manager singleton."""
+    """Get or create the alert manager singleton (thread-safe)."""
     global _alert_manager
     if _alert_manager is None:
-        _alert_manager = AlertManager()
+        with _alert_manager_lock:
+            # Double-check locking pattern
+            if _alert_manager is None:
+                _alert_manager = AlertManager()
     return _alert_manager

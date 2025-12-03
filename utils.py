@@ -71,7 +71,7 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     
     # Liquidity indicator (offer count normalized)
     if 'last_offer_count' in df.columns:
-        df['last_offer_count'] = df['last_offer_count'].fillna(0)
+        df['last_offer_count'] = pd.to_numeric(df['last_offer_count'], errors='coerce').fillna(0)
         # Classify: Low (0-10), Medium (10-50), High (50+)
         df['liquidity_tier'] = df['last_offer_count'].apply(
             lambda x: 'High' if x >= 50 else ('Medium' if x >= 10 else 'Low')
@@ -89,8 +89,10 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
         
         # Normalize components to 0-1 scale for scoring
         # Handle edge cases where max could be 0 or negative
-        max_profit = max(df['profit'].max(), 1)
-        max_roi = max(df['roi'].max(), 1)
+        profit_max = df['profit'].max()
+        max_profit = profit_max if pd.notna(profit_max) and profit_max > 0 else 1
+        roi_max = df['roi'].max()
+        max_roi = roi_max if pd.notna(roi_max) and roi_max > 0 else 1
         
         # Clip negative values to 0 for normalization to prevent negative scores
         df['opportunity_score'] = (

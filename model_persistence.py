@@ -164,8 +164,27 @@ class ModelPersistence:
         
         # Sanitize inputs to avoid NaN/inf issues
         import math
+        
+        # Convert numpy/pandas types to Python native types
+        if hasattr(profit, 'item'):
+            profit = float(profit.item())
+        elif hasattr(profit, 'iloc'):
+            profit = float(profit.iloc[0]) if len(profit) > 0 else 0.0
+        if hasattr(flea_price, 'item'):
+            flea_price = float(flea_price.item())
+        elif hasattr(flea_price, 'iloc'):
+            flea_price = float(flea_price.iloc[0]) if len(flea_price) > 0 else 0.0
+        if hasattr(offers, 'item'):
+            offers = int(offers.item())
+        elif hasattr(offers, 'iloc'):
+            offers = int(offers.iloc[0]) if len(offers) > 0 else 0
+            
         if not isinstance(profit, (int, float)) or math.isnan(profit) or math.isinf(profit):
             profit = 0.0
+        if not isinstance(flea_price, (int, float)) or math.isnan(flea_price) or math.isinf(flea_price):
+            flea_price = 0.0
+        if not isinstance(offers, (int, float)) or (isinstance(offers, float) and (math.isnan(offers) or math.isinf(offers))):
+            offers = 0
             
         if item_id not in self._state['item_statistics']:
             self._state['item_statistics'][item_id] = {
@@ -452,13 +471,18 @@ class ModelPersistence:
         return len(to_remove)
 
 
-# Singleton instance
+# Singleton instance with thread-safe initialization
+import threading
 _persistence: Optional[ModelPersistence] = None
+_persistence_lock = threading.Lock()
 
 
 def get_model_persistence() -> ModelPersistence:
-    """Get or create the model persistence singleton."""
+    """Get or create the model persistence singleton (thread-safe)."""
     global _persistence
     if _persistence is None:
-        _persistence = ModelPersistence()
+        with _persistence_lock:
+            # Double-check locking pattern
+            if _persistence is None:
+                _persistence = ModelPersistence()
     return _persistence
