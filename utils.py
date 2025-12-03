@@ -1,4 +1,8 @@
-"""Shared utility functions for Tarkov Trader Profit application."""
+"""Shared utility functions for Tarkov Trader Profit application.
+
+This module provides core business logic and calculations shared between
+the collector and application components.
+"""
 
 import re
 import pandas as pd
@@ -37,6 +41,12 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
         >>> get_flea_level_requirement("Bandage", "Medical")
         15
     """
+    # Handle None/empty inputs gracefully
+    if not item_name:
+        item_name = ""
+    if not category:
+        category = ""
+    
     item_name_lower = item_name.lower()
     
     # Check item-specific lock first (highest priority)
@@ -210,7 +220,11 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def calculate_flea_market_fee(base_price: Union[int, float], sell_price: Union[int, float], intel_center_level: int = 0) -> int:
+def calculate_flea_market_fee(
+    base_price: Union[int, float], 
+    sell_price: Union[int, float], 
+    intel_center_level: int = 0
+) -> int:
     """
     Calculate the flea market fee for listing an item.
     
@@ -224,6 +238,9 @@ def calculate_flea_market_fee(base_price: Union[int, float], sell_price: Union[i
     
     Returns:
         The fee in rubles. Returns 0 for invalid inputs.
+        
+    Raises:
+        No exceptions are raised; invalid inputs return 0.
         
     Example:
         >>> calculate_flea_market_fee(10000, 15000, intel_center_level=2)
@@ -304,7 +321,10 @@ def format_roubles(value: Union[int, float, None]) -> str:
                     return "0 ₽"
             except (TypeError, ValueError):
                 pass  # Not a numeric type that supports isnan/isinf
-            value = value.item()  # type: ignore[union-attr]
+            try:
+                value = value.item()  # type: ignore[union-attr]
+            except (ValueError, AttributeError):
+                return "0 ₽"
         if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
             return "0 ₽"
         return f"{int(value):,} ₽"

@@ -162,10 +162,17 @@ class TestDataExporter:
         assert not os.path.exists(file1)
         assert not os.path.exists(file2)
     
-    def test_invalid_format_raises(self, exporter, sample_df):
-        """Test that invalid format raises error."""
-        with pytest.raises(ValueError):
-            exporter.export_recommendations(sample_df, format="invalid")
+    def test_invalid_format_falls_back_to_csv(self, exporter, sample_df):
+        """Test that invalid format falls back to CSV instead of raising."""
+        # This should not raise, but fall back to CSV
+        filepath = exporter.export_recommendations(sample_df, format="invalid_format")
+        assert os.path.exists(filepath)
+        assert filepath.endswith('.csv')
+    
+    def test_cleanup_old_exports_negative_days(self, exporter, sample_df):
+        """Test cleanup_old_exports with negative days returns 0."""
+        result = exporter.cleanup_old_exports(days=-5)
+        assert result == 0
 
 
 class TestExporterSingleton:

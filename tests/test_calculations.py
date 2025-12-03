@@ -43,6 +43,16 @@ class TestCalculations(unittest.TestCase):
 class TestFleaLevelRequirement(unittest.TestCase):
     """Test the get_flea_level_requirement function for Patch 1.0 flea market restrictions."""
     
+    def test_none_inputs(self):
+        """Should handle None inputs gracefully."""
+        level = utils.get_flea_level_requirement(None, None)  # type: ignore[arg-type]
+        self.assertEqual(level, config.FLEA_MARKET_UNLOCK_LEVEL)
+    
+    def test_empty_string_inputs(self):
+        """Should handle empty strings gracefully."""
+        level = utils.get_flea_level_requirement("", "")
+        self.assertEqual(level, config.FLEA_MARKET_UNLOCK_LEVEL)
+    
     def test_specific_item_lock_graphics_card(self):
         """Graphics card should require level 40."""
         level = utils.get_flea_level_requirement("Graphics card", "Electronics")

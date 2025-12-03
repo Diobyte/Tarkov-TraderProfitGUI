@@ -308,6 +308,17 @@ class TestModelPersistence:
         assert consistent_stats['consistency_score'] > inconsistent_stats['consistency_score']
 
 
+    def test_cleanup_old_items_invalid_days(self, persistence):
+        """Test cleanup_old_items handles invalid days parameter."""
+        # Test with 0 days
+        result = persistence.cleanup_old_items(days=0)
+        assert result == 0
+        
+        # Test with negative days
+        result = persistence.cleanup_old_items(days=-5)
+        assert result == 0
+
+
 class TestModelPersistenceSingleton:
     """Test the singleton pattern."""
     

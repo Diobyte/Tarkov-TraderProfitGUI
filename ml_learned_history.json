@@ -192,11 +192,43 @@
       "profitable_rate": 0.005584858827179647,
       "avg_profit": -69231.5013962147,
       "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T21:58:40.614643",
+      "items_processed": 3223,
+      "profitable_count": 19,
+      "profitable_rate": 0.00589512876202296,
+      "avg_profit": -69305.95128762024,
+      "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T22:03:55.131831",
+      "items_processed": 3223,
+      "profitable_count": 19,
+      "profitable_rate": 0.00589512876202296,
+      "avg_profit": -69290.34719205709,
+      "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T22:09:29.815836",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69275.25783431585,
+      "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T22:14:49.627440",
+      "items_processed": 3223,
+      "profitable_count": 18,
+      "profitable_rate": 0.005584858827179647,
+      "avg_profit": -69292.58982314613,
+      "accuracy": null
     }
   ],
   "daily_summaries": [],
   "category_trends": {},
   "accuracy_history": [],
-  "total_items_seen": 77352,
-  "total_profitable_items": 430
+  "total_items_seen": 90244,
+  "total_profitable_items": 504
 }

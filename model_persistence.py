@@ -273,7 +273,24 @@ class ModelPersistence:
     
     def update_category_performance(self, category: str, profit: float, 
                                     is_profitable: bool) -> None:
-        """Update category performance tracking."""
+        """Update category performance tracking.
+        
+        Args:
+            category: Category name to update.
+            profit: Profit value to incorporate.
+            is_profitable: Whether this item was profitable.
+        """
+        # Validate category name
+        if not category or not isinstance(category, str):
+            return
+        category = category.strip()
+        if not category:
+            return
+        
+        # Sanitize profit
+        if not isinstance(profit, (int, float)) or (isinstance(profit, float) and (math.isnan(profit) or math.isinf(profit))):
+            profit = 0.0
+            
         if category not in self._state['category_weights']:
             self._state['category_weights'][category] = {
                 'total_items': 0,
@@ -294,7 +311,23 @@ class ModelPersistence:
             cat['weight'] = 0.5 + rate  # Weight ranges from 0.5 to 1.5
     
     def update_trader_reliability(self, trader: str, profit: float) -> None:
-        """Update trader reliability scores."""
+        """Update trader reliability scores.
+        
+        Args:
+            trader: Trader name to update.
+            profit: Profit value to incorporate.
+        """
+        # Validate trader name
+        if not trader or not isinstance(trader, str):
+            return
+        trader = trader.strip()
+        if not trader:
+            return
+        
+        # Sanitize profit
+        if not isinstance(profit, (int, float)) or (isinstance(profit, float) and (math.isnan(profit) or math.isinf(profit))):
+            profit = 0.0
+            
         if trader not in self._state['trader_reliability']:
             self._state['trader_reliability'][trader] = {
                 'count': 0,
@@ -370,27 +403,83 @@ class ModelPersistence:
             self._history['daily_summaries'] = self._history['daily_summaries'][-90:]
     
     def get_item_learned_stats(self, item_id: str) -> Optional[Dict[str, Any]]:
-        """Get learned statistics for a specific item."""
+        """Get learned statistics for a specific item.
+        
+        Args:
+            item_id: The item ID to look up.
+            
+        Returns:
+            Dict with item statistics or None if not found.
+            Includes count, profit_mean, profit_min, profit_max, consistency_score,
+            first_seen, last_seen, category, and trader.
+        """
+        if not item_id or not isinstance(item_id, str):
+            return None
+        item_id = item_id.strip()
+        if not item_id:
+            return None
         return self._state['item_statistics'].get(item_id)
     
     def get_category_weight(self, category: str) -> float:
-        """Get learned weight for a category."""
+        """Get learned weight for a category.
+        
+        Args:
+            category: Category name to look up.
+            
+        Returns:
+            Float weight (default 1.0 if category not found or invalid).
+        """
+        if not category or not isinstance(category, str):
+            return 1.0
+        category = category.strip()
+        if not category:
+            return 1.0
         cat = self._state['category_weights'].get(category, {})
         return cat.get('weight', 1.0)
     
     def get_trader_reliability(self, trader: str) -> float:
-        """Get reliability score for a trader."""
+        """Get reliability score for a trader.
+        
+        Args:
+            trader: Trader name to look up.
+            
+        Returns:
+            Float reliability score (default 0.5 if trader not found or invalid).
+        """
+        if not trader or not isinstance(trader, str):
+            return 0.5
+        trader = trader.strip()
+        if not trader:
+            return 0.5
         t = self._state['trader_reliability'].get(trader, {})
         return t.get('reliability', 0.5)
     
     def get_calibration(self) -> Dict[str, float]:
-        """Get calibration parameters."""
-        return self._state.get('calibration', {
-            'profit_mean': 0,
-            'profit_std': 1,
-            'roi_mean': 0,
-            'roi_std': 1,
-        })
+        """Get calibration parameters.
+        
+        Returns:
+            Dict with profit_mean, profit_std, roi_mean, roi_std.
+            All values are guaranteed to be valid floats.
+        """
+        defaults: Dict[str, float] = {
+            'profit_mean': 0.0,
+            'profit_std': 1.0,
+            'roi_mean': 0.0,
+            'roi_std': 1.0,
+        }
+        cal = self._state.get('calibration', defaults)
+        # Ensure all values are valid floats
+        result: Dict[str, float] = {}
+        for key, default in defaults.items():
+            val = cal.get(key, default)
+            if val is None or (isinstance(val, float) and (math.isnan(val) or math.isinf(val))):
+                result[key] = default
+            else:
+                try:
+                    result[key] = float(val)
+                except (ValueError, TypeError):
+                    result[key] = default
+        return result
     
     def update_calibration(self, profit_mean: float, profit_std: float,
                           roi_mean: float, roi_std: float) -> None:
@@ -483,11 +572,16 @@ class ModelPersistence:
         Remove items not seen in the specified number of days.
         
         Args:
-            days: Remove items not seen in this many days
+            days: Remove items not seen in this many days. Must be positive.
             
         Returns:
-            Number of items removed
+            Number of items removed. Returns 0 if days is invalid.
         """
+        # Validate days parameter
+        if days <= 0:
+            logger.warning("cleanup_old_items called with invalid days: %d, skipping", days)
+            return 0
+        
         from datetime import timedelta
         cutoff = datetime.now() - timedelta(days=days)
         

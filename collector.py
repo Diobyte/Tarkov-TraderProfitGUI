@@ -53,8 +53,11 @@ def handle_exit(signum: int, frame: Optional[FrameType]) -> NoReturn:
     if _session is not None:
         try:
             _session.close()
-        except Exception:
-            pass
+            logger.debug("HTTP session closed successfully.")
+        except Exception as e:
+            logger.debug("Failed to close HTTP session: %s", e)
+        finally:
+            _session = None
     
     sys.exit(0)
 
@@ -90,7 +93,10 @@ def get_session() -> requests.Session:
         _session.mount('https://', adapter)
     return _session
 
-def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def run_query(
+    query: str, 
+    variables: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     """Execute a GraphQL query against the Tarkov API.
     
     Args:
@@ -98,13 +104,14 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
         variables: Optional query variables.
         
     Returns:
-        JSON response dict or None on failure.
+        JSON response dict or None on failure. The dict contains a 'data' key
+        with the query results if successful.
         
     Note:
         Handles rate limiting (429) with automatic retry via session configuration.
         Logs errors but does not raise exceptions to allow caller to continue.
     """
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers: Dict[str, str] = {"Content-Type": "application/json", "Accept": "application/json"}
     session = get_session()
     try:
         payload: Dict[str, Any] = {'query': query}
@@ -231,18 +238,26 @@ def fetch_and_store_data() -> None:
     current_time = datetime.now()
     
     for item in all_items:
+        # Skip invalid items
+        if not isinstance(item, dict):
+            continue
+            
         # Filter out items explicitly marked as noFlea
-        types = item.get('types', [])
+        types = item.get('types', []) or []
+        if not isinstance(types, list):
+            types = []
         if 'noFlea' in types:
             continue
 
-        item_id = item['id']
-        name = item['name']
-        short_name = item.get('shortName', name)
-        icon_link = item.get('iconLink', '')
-        wiki_link = item.get('wikiLink', '')
-        width = item.get('width', 1)
-        height = item.get('height', 1)
+        item_id = item.get('id', '')
+        if not item_id:
+            continue
+        name = item.get('name', '') or 'Unknown'
+        short_name = item.get('shortName', name) or name
+        icon_link = item.get('iconLink', '') or ''
+        wiki_link = item.get('wikiLink', '') or ''
+        width = item.get('width', 1) or 1
+        height = item.get('height', 1) or 1
         base_price = item.get('basePrice', 0) or 0
         avg_24h_price = item.get('avg24hPrice', 0) or 0
         low_24h_price = item.get('low24hPrice', 0) or 0
@@ -250,7 +265,7 @@ def fetch_and_store_data() -> None:
         change_last_48h = item.get('changeLast48hPercent', 0.0) or 0.0
         weight = item.get('weight', 0.0) or 0.0
         last_offer_count = item.get('lastOfferCount', 0) or 0
-        updated = item.get('updated', '')
+        updated = item.get('updated', '') or ''
         category_data = item.get('category')
         category = 'Unknown'
         if category_data and isinstance(category_data, dict):
@@ -349,9 +364,17 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
     Returns:
         Dict with training statistics including items_processed and profitable_count.
         Returns empty dict with status='no_data' if batch_data is empty.
+        
+    Raises:
+        ValueError: If batch_data contains invalid structure.
     """
     if not batch_data:
         return {'status': 'no_data', 'items_processed': 0, 'profitable_count': 0}
+    
+    # Validate batch_data structure
+    if not isinstance(batch_data, list) or not all(isinstance(item, tuple) for item in batch_data):
+        logging.warning("train_model_on_batch received invalid data structure")
+        return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training
     # v3 format includes flea_level_required (26 columns)

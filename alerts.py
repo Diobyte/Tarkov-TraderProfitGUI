@@ -27,7 +27,15 @@ ALERT_HISTORY_FILE = os.path.join(BASE_DIR, 'alert_history.json')
 
 
 def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
-    """Write JSON data atomically to avoid corrupting alert files."""
+    """Write JSON data atomically to avoid corrupting alert files.
+    
+    Uses a temporary file and atomic rename to ensure data integrity.
+    Falls back to direct write if atomic operation fails.
+    
+    Args:
+        file_path: Path to the JSON file to write.
+        payload: Data to serialize as JSON (dict or list).
+    """
     directory = os.path.dirname(file_path)
     if directory:
         os.makedirs(directory, exist_ok=True)
@@ -41,22 +49,25 @@ def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[s
             temp_name = tmp.name
         os.replace(temp_name, file_path)
         temp_name = None  # Clear so we don't try to delete on success
-    except OSError as e:
+    except (OSError, IOError) as e:
         # Clean up temp file if it exists
-        if temp_name and os.path.exists(temp_name):
+        if temp_name:
             try:
-                os.remove(temp_name)
+                if os.path.exists(temp_name):
+                    os.remove(temp_name)
             except OSError:
                 pass
+            temp_name = None
         # Fall back to direct write if atomic write fails
         logger.warning("Atomic write failed, using direct write: %s", e)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, indent=2, default=str)
     finally:
         # Final cleanup attempt for temp file
-        if temp_name and os.path.exists(temp_name):
+        if temp_name:
             try:
-                os.remove(temp_name)
+                if os.path.exists(temp_name):
+                    os.remove(temp_name)
             except OSError:
                 pass
 
@@ -300,13 +311,21 @@ class AlertManager:
         
         Args:
             market_data: List of item dicts with profit, roi, etc.
+                        Each dict should contain at minimum 'item_id' and 'profit'.
             
         Returns:
-            List of triggered alert notifications.
+            List of triggered alert notifications with alert details.
         """
-        triggered = []
+        triggered: List[Dict[str, Any]] = []
+        
+        # Handle None or invalid input
+        if not market_data or not isinstance(market_data, list):
+            return triggered
         
         for item in market_data:
+            # Skip invalid items
+            if not isinstance(item, dict):
+                continue
             item_id = item.get('item_id', '')
             profit = item.get('profit', 0)
             roi = item.get('roi', 0)

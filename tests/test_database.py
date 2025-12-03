@@ -139,5 +139,52 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(enhanced_item[5], 5000)  # Profit
         self.assertEqual(enhanced_item[18], 'ETI')  # Short name
 
+    def test_get_item_history_invalid_id(self):
+        """Test get_item_history returns empty list for invalid IDs."""
+        database.init_db()
+        
+        # Test with None
+        result = database.get_item_history(None)  # type: ignore[arg-type]
+        self.assertEqual(result, [])
+        
+        # Test with empty string
+        result = database.get_item_history('')
+        self.assertEqual(result, [])
+        
+        # Test with whitespace only
+        result = database.get_item_history('   ')
+        self.assertEqual(result, [])
+
+    def test_cleanup_old_data_invalid_days(self):
+        """Test cleanup_old_data handles invalid days parameter."""
+        database.init_db()
+        
+        # Test with 0 days
+        result = database.cleanup_old_data(days=0)
+        self.assertEqual(result, 0)
+        
+        # Test with negative days
+        result = database.cleanup_old_data(days=-5)
+        self.assertEqual(result, 0)
+
+    def test_get_market_trends_invalid_hours(self):
+        """Test get_market_trends handles invalid hours parameter."""
+        database.init_db()
+        
+        # Insert test data first
+        now = datetime.now()
+        items = [
+            ('1', 'Test Item', now, 10000, 15000, 'Therapist', 5000, 'http://link', 1, 1, 11000, 9000, 5.0, 1.0, 'Medical')
+        ]
+        database.save_prices_batch(items)
+        
+        # Test with 0 hours (should use default)
+        result = database.get_market_trends(hours=0)
+        self.assertIsInstance(result, list)
+        
+        # Test with negative hours (should use default)
+        result = database.get_market_trends(hours=-10)
+        self.assertIsInstance(result, list)
+
 if __name__ == '__main__':
     unittest.main()

@@ -126,6 +126,9 @@ class DataExporter:
             
         Returns:
             Path to the exported file (may be CSV if Excel fails).
+            
+        Raises:
+            No exceptions are raised; errors fall back to CSV export.
         """
         if filename is None:
             filename = self._generate_filename(prefix, "xlsx")
@@ -138,8 +141,11 @@ class DataExporter:
             for char in invalid_chars:
                 safe_sheet_name = safe_sheet_name.replace(char, '_')
             # Sheet name cannot start or end with apostrophe, and cannot be empty
-            safe_sheet_name = safe_sheet_name.strip().strip("'")
+            safe_sheet_name = safe_sheet_name.strip().strip("'").strip()
             if not safe_sheet_name:
+                safe_sheet_name = "Data"
+            # Excel also doesn't allow sheet names that are just whitespace
+            if not safe_sheet_name.replace('_', '').strip():
                 safe_sheet_name = "Data"
             df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
             logger.info("Exported %d rows to %s", len(df), filename)
@@ -264,7 +270,8 @@ class DataExporter:
             return self.export_to_markdown(export_df, prefix="recommendations",
                                            title="Trading Recommendations")
         else:
-            raise ValueError(f"Unsupported format: {format}")
+            logger.warning("Unsupported export format '%s', falling back to CSV", format)
+            return self.export_to_csv(export_df, prefix="recommendations")
     
     def export_market_snapshot(self, df: pd.DataFrame) -> Dict[str, str]:
         """
@@ -355,12 +362,19 @@ class DataExporter:
         Remove export files older than specified days.
         
         Args:
-            days: Delete files older than this many days.
+            days: Delete files older than this many days. 0 means delete all files,
+                  negative values are invalid.
             
         Returns:
-            Number of files deleted.
+            Number of files deleted. Returns 0 if days is invalid.
         """
         from datetime import timedelta
+        
+        # Validate days parameter - negative values are invalid, 0 means "all files"
+        if days < 0:
+            logger.warning("cleanup_old_exports called with negative days: %d, skipping", days)
+            return 0
+        
         cutoff = datetime.now() - timedelta(days=days)
         deleted = 0
         

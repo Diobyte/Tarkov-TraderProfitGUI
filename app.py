@@ -53,7 +53,14 @@ COLORS = {
 # COLLECTOR MANAGEMENT
 # =============================================================================
 def is_collector_running() -> Tuple[bool, Optional[int], Optional[str]]:
-    """Check if the data collector is running."""
+    """Check if the data collector is running.
+    
+    Returns:
+        Tuple of (is_running, pid, mode) where:
+            - is_running: True if collector process is active
+            - pid: Process ID if running, None otherwise  
+            - mode: 'standalone' or 'session' if running, None otherwise
+    """
     for pid_file, mode in [(STANDALONE_PID_FILE, "standalone"), (PID_FILE, "session")]:
         if os.path.exists(pid_file):
             try:
@@ -512,11 +519,20 @@ def load_data() -> pd.DataFrame:
     
     Returns:
         pd.DataFrame: DataFrame containing processed market data with calculated metrics.
-                     Returns empty DataFrame if no data available.
+                     Returns empty DataFrame if no data available or on error.
+                     
+    Note:
+        Data is cached for STREAMLIT_CACHE_TTL_SECONDS to reduce database load.
+        Handles multiple data format versions (15, 24, 25, 26 columns).
     """
     try:
         data = database.get_latest_prices()
-        if not data:
+        if not data or len(data) == 0:
+            return pd.DataFrame()
+        
+        # Validate data is a list of tuples
+        if not isinstance(data, list) or not all(isinstance(row, tuple) for row in data):
+            logging.error("Invalid data format from database")
             return pd.DataFrame()
         
         columns = [
@@ -584,18 +600,19 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     Args:
         df: The source DataFrame containing market data.
         filters: Dictionary containing filter criteria:
-            - min_profit: Minimum profit threshold
-            - min_roi: Minimum ROI percentage
-            - search: Item name search string
+            - min_profit: Minimum profit threshold (int)
+            - min_roi: Minimum ROI percentage (float)
+            - search: Item name search string (str)
             - category: Category filter ('All' or specific category)
-            - show_negative: Whether to include negative profit items
+            - show_negative: Whether to include negative profit items (bool)
             - min_offers: Minimum offer count (default: 5)
-            - min_profit_per_slot: Minimum profit per inventory slot
-            - max_trader_level: Maximum allowed trader level
+            - min_profit_per_slot: Minimum profit per inventory slot (int)
+            - max_trader_level: Maximum allowed trader level (int or None)
             - player_level: Player's current level for flea market access (default: 15)
     
     Returns:
         pd.DataFrame: Filtered DataFrame matching all criteria.
+                      Returns empty DataFrame if input is empty.
     """
     if df.empty:
         return df
@@ -693,27 +710,35 @@ def render_stats(df: pd.DataFrame) -> None:
     
     Args:
         df: DataFrame containing filtered market data.
+        
+    Note:
+        Displays 5 key metrics: Total Items, Profitable count,
+        Best Flip profit, Average ROI, and Total Potential profit.
     """
     if df.empty:
         st.warning("No data available. Start the collector to begin tracking prices.")
         return
     
     profitable = df[df['profit'] > 0]
+    total_items = len(df)
     
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric(
             "Total Items",
-            f"{len(df):,}",
+            f"{total_items:,}",
             help="Items being tracked"
         )
     
     with col2:
+        profitable_count = len(profitable)
+        # Avoid division by zero
+        pct = (profitable_count / total_items * 100) if total_items > 0 else 0
         st.metric(
             "Profitable",
-            f"{len(profitable):,}",
-            delta=f"{len(profitable)/len(df)*100:.0f}%" if len(df) > 0 else "0%",
+            f"{profitable_count:,}",
+            delta=f"{pct:.0f}%",
             help="Items with positive profit"
         )
     
@@ -788,7 +813,11 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
             # Medal for top 3
             medal = ["🥇", "🥈", "🥉"][i] if i < 3 else "💎"
             
-            profit_color = COLORS['profit'] if item['profit'] > 0 else COLORS['loss']
+            # Safely get profit with default
+            item_profit = item.get('profit', 0)
+            if pd.isna(item_profit):
+                item_profit = 0
+            profit_color = COLORS['profit'] if item_profit > 0 else COLORS['loss']
             
             # Get trend indicator if available
             trend_icon = ""
@@ -1968,7 +1997,11 @@ def render_item_detail(df: pd.DataFrame) -> None:
         st.caption(f"{item['category']}")
         
         wiki_link = item.get('wiki_link')
-        if wiki_link and isinstance(wiki_link, str) and wiki_link.startswith('http'):
+        # Validate wiki_link is a safe URL before rendering
+        if wiki_link and isinstance(wiki_link, str) and wiki_link.startswith('https://escapefromtarkov'):
+            st.link_button("📖 Wiki", wiki_link)
+        elif wiki_link and isinstance(wiki_link, str) and wiki_link.startswith('http'):
+            # Allow other http(s) links but display a warning
             st.link_button("📖 Wiki", wiki_link)
     
     with col2:
@@ -2002,30 +2035,36 @@ def render_item_detail(df: pd.DataFrame) -> None:
         # Price history chart
         history = database.get_item_history(item['item_id'])
         if history and len(history) > 1:
-            hist_df = pd.DataFrame(history, columns=['timestamp', 'flea_price', 'trader_price', 'profit'])
-            hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'])
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=hist_df['timestamp'], y=hist_df['profit'],
-                mode='lines+markers', name='Profit',
-                line=dict(color=COLORS['profit'], width=2)
-            ))
-            fig.add_trace(go.Scatter(
-                x=hist_df['timestamp'], y=hist_df['flea_price'],
-                mode='lines', name='Flea Price',
-                line=dict(color=COLORS['warning'], dash='dash')
-            ))
-            fig.update_layout(
-                title='Price History',
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color=COLORS['text'],
-                height=250,
-                margin=dict(l=0, r=0, t=40, b=0),
-                legend=dict(orientation='h', yanchor='bottom', y=1.02)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                hist_df = pd.DataFrame(history, columns=['timestamp', 'flea_price', 'trader_price', 'profit'])
+                hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], errors='coerce')
+                # Drop rows with invalid timestamps
+                hist_df = hist_df.dropna(subset=['timestamp'])
+                
+                if len(hist_df) > 1:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=hist_df['timestamp'], y=hist_df['profit'],
+                        mode='lines+markers', name='Profit',
+                        line=dict(color=COLORS['profit'], width=2)
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=hist_df['timestamp'], y=hist_df['flea_price'],
+                        mode='lines', name='Flea Price',
+                        line=dict(color=COLORS['warning'], dash='dash')
+                    ))
+                    fig.update_layout(
+                        title='Price History',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        font_color=COLORS['text'],
+                        height=250,
+                        margin=dict(l=0, r=0, t=40, b=0),
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                logging.warning("Failed to render price history: %s", e)
 
 # =============================================================================
 # SYSTEM CONTROL PANEL

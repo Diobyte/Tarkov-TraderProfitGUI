@@ -8,6 +8,7 @@ import sqlite3
 import os
 import time
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Any, Callable, Dict, Final
 from functools import wraps
@@ -32,22 +33,29 @@ class DatabaseConnection:
     Context manager for database connections.
     
     Ensures proper connection handling and cleanup, with automatic
-    commit on success and rollback on error.
+    commit on success and rollback on error. Uses WAL mode for
+    better concurrent read/write performance.
     
     Usage:
         with DatabaseConnection() as (conn, cursor):
             cursor.execute('SELECT * FROM prices')
             rows = cursor.fetchall()
+            
+        # Read-only mode (opens connection in read-only mode):
+        with DatabaseConnection(readonly=True) as (conn, cursor):
+            cursor.execute('SELECT COUNT(*) FROM prices')
+            
+    Args:
+        timeout: Connection timeout in seconds. Defaults to config value.
+        readonly: If True, opens connection in read-only mode using URI.
+        
+    Note:
+        Automatically commits on successful exit, rolls back on error.
+        Connection is always closed on exit.
     """
     
     def __init__(self, timeout: Optional[int] = None, readonly: bool = False) -> None:
-        """
-        Initialize the connection manager.
-        
-        Args:
-            timeout: Connection timeout in seconds. Defaults to config value.
-            readonly: If True, opens connection in read-only mode.
-        """
+        """Initialize the connection manager."""
         self.timeout = timeout if timeout is not None else config.DATABASE_CONNECTION_TIMEOUT
         self.readonly = readonly
         self.conn: Optional[sqlite3.Connection] = None
@@ -125,7 +133,7 @@ def retry_db_op(
 
     SQLite can raise OperationalError with 'database is locked' when multiple
     processes/threads access the database simultaneously. This decorator
-    automatically retries the operation with exponential backoff.
+    automatically retries the operation with a fixed delay between attempts.
     
     Args:
         max_retries: Maximum number of retry attempts. Defaults to
@@ -134,11 +142,22 @@ def retry_db_op(
               config.DATABASE_RETRY_DELAY (1.0).
               
     Returns:
-        Decorated function that retries on lock errors.
+        Decorated function that retries on database lock errors.
+        
+    Raises:
+        sqlite3.OperationalError: If all retries are exhausted.
+        Exception: Any other non-lock related exceptions are re-raised.
         
     Example:
         @retry_db_op(max_retries=3, delay=0.5)
-        def my_db_function():
+        def get_item_count():
+            with DatabaseConnection() as (conn, cursor):
+                cursor.execute('SELECT COUNT(*) FROM prices')
+                return cursor.fetchone()[0]
+                
+        # Can also use with default values:
+        @retry_db_op()
+        def save_item(item_data):
             # database operations here
             pass
     """
@@ -443,13 +462,20 @@ def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
         
     Returns:
         List of tuples with (timestamp, flea_price, trader_price, profit).
-        Empty list if no history found or item doesn't exist.
+        Empty list if no history found, item doesn't exist, or item_id is invalid.
         
     Example:
         >>> history = get_item_history('5c0a840b86f7742ffa4f2482')
         >>> for ts, flea, trader, profit in history:
         ...     print(f"{ts}: profit={profit}")
     """
+    # Validate item_id
+    if not item_id or not isinstance(item_id, str):
+        return []
+    item_id = item_id.strip()
+    if not item_id:
+        return []
+    
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
@@ -472,12 +498,21 @@ def get_market_trends(hours: int = 6) -> List[Tuple[str, float, int, int, int]]:
     Calculate volatility and average profit over the last X hours.
     
     Args:
-        hours: Number of hours to look back for trend data.
+        hours: Number of hours to look back for trend data. Must be positive.
         
     Returns:
         List of tuples with (item_id, avg_profit, min_profit, max_profit, data_points).
-        Empty list if no data found.
+        Empty list if no data found or hours is invalid.
+        
+    Note:
+        Uses the latest timestamp in the database as the anchor point, which
+        ensures calculations work correctly even with stale or gapped data.
     """
+    # Validate hours parameter
+    if not isinstance(hours, int) or hours <= 0:
+        logging.warning("get_market_trends called with invalid hours: %s, using default 6", hours)
+        hours = 6
+    
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
@@ -544,12 +579,17 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     Delete records older than the specified number of days.
     
     Args:
-        days: Number of days to retain data for (default: 7).
+        days: Number of days to retain data for (default: 7). Must be positive.
         vacuum: Whether to run VACUUM after deletion. Can lock database.
         
     Returns:
-        Number of records deleted.
+        Number of records deleted. Returns 0 if days is invalid.
     """
+    # Validate days parameter
+    if days <= 0:
+        logging.warning("cleanup_old_data called with invalid days: %d, skipping", days)
+        return 0
+    
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
@@ -642,13 +682,25 @@ def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -
     
     Args:
         item_ids: Optional list of item IDs to filter. If None, returns all items.
-        hours: Number of hours to look back for trend data.
+                  Empty strings and None values in the list are filtered out.
+        hours: Number of hours to look back for trend data. Must be positive.
         
     Returns:
         List of tuples with (item_id, data_points, avg_profit, min_profit, max_profit,
         avg_flea_price, avg_trader_price, avg_offers, first_seen, last_seen).
         Empty list if no data found.
     """
+    # Validate hours parameter
+    if not isinstance(hours, int) or hours <= 0:
+        logging.warning("get_item_trend_data called with invalid hours: %s, using default 24", hours)
+        hours = 24
+    
+    # Validate and sanitize item_ids
+    if item_ids is not None:
+        item_ids = [str(iid).strip() for iid in item_ids if iid and str(iid).strip()]
+        if not item_ids:
+            item_ids = None
+    
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)

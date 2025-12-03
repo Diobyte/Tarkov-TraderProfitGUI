@@ -44,28 +44,32 @@ class TarkovMLEngine:
     optimal trading recommendations.
     
     Features:
-    - Feature engineering for game economy metrics
-    - Opportunity scoring with adaptive weights  
-    - Anomaly detection for arbitrage opportunities (Isolation Forest)
-    - Item clustering for strategy grouping (K-Means)
-    - Profit trend prediction (Ridge regression)
-    - Risk assessment with multi-factor scoring
-    - Historical trend learning for improved recommendations
-    - Persistent model state that survives database cleanups
+        - Feature engineering for game economy metrics
+        - Opportunity scoring with adaptive weights  
+        - Anomaly detection for arbitrage opportunities (Isolation Forest)
+        - Item clustering for strategy grouping (K-Means)
+        - Profit trend prediction (Ridge regression)
+        - Risk assessment with multi-factor scoring
+        - Historical trend learning for improved recommendations
+        - Persistent model state that survives database cleanups
     
     Attributes:
-        scaler: RobustScaler for handling outliers common in game economies.
+        scaler (RobustScaler): For handling outliers common in game economies.
         price_predictor: Reserved for future advanced prediction models.
-        anomaly_detector: IsolationForest for detecting unusual pricing.
-        item_clusterer: KMeans for grouping similar trading opportunities.
-        trend_data: Cached historical trend data for items.
-        profit_stats: Global profit statistics for calibration.
-        persistence: Model persistence layer for saving/loading state.
+        anomaly_detector (IsolationForest): For detecting unusual pricing.
+        item_clusterer (KMeans): For grouping similar trading opportunities.
+        trend_data (pd.DataFrame): Cached historical trend data for items.
+        profit_stats (Dict): Global profit statistics for calibration.
+        persistence (ModelPersistence): Model persistence layer for saving/loading state.
         
     Example:
         >>> engine = get_ml_engine()
         >>> df = engine.calculate_opportunity_score_ml(market_data)
         >>> recommendations = engine.generate_trading_recommendations(df)
+        
+    Thread Safety:
+        Use get_ml_engine() to get the singleton instance. The class uses
+        double-check locking for thread-safe initialization.
     """
     
     def __init__(self) -> None:
@@ -267,11 +271,15 @@ class TarkovMLEngine:
         
         Args:
             hours: Hours of history to analyze. Defaults to config.TREND_LOOKBACK_HOURS.
+                   Must be positive if provided.
             
         Returns:
             True if trend data was successfully loaded, False otherwise.
         """
         if hours is None:
+            hours = config.TREND_LOOKBACK_HOURS
+        elif hours <= 0:
+            logger.warning("Invalid hours value %d, using default", hours)
             hours = config.TREND_LOOKBACK_HOURS
             
         try:
@@ -727,13 +735,14 @@ class TarkovMLEngine:
         # Adaptive weighting based on data characteristics
         # Items with high variance in a feature get less weight (unstable signal)
         feature_std = X.std()
-        # Replace zeros with small value to avoid division by zero
-        feature_stability = 1 / (feature_std.replace(0, 0.01) + 0.01)
+        # Replace zeros and NaN with small value to avoid division by zero
+        feature_std = feature_std.fillna(0.01).replace(0, 0.01)
+        feature_stability = 1 / (feature_std + 0.01)
         stability_sum = feature_stability.sum()
-        if stability_sum > 0 and not pd.isna(stability_sum):
+        if stability_sum > 0 and not pd.isna(stability_sum) and not np.isinf(stability_sum):
             feature_stability = feature_stability / stability_sum
         else:
-            # Fallback to uniform weights if sum is zero or NaN
+            # Fallback to uniform weights if sum is zero, NaN, or inf
             feature_stability = pd.Series(1.0 / len(score_features), index=feature_stability.index)
         
         # Base weights (domain knowledge) - volume gets significant weight
@@ -1018,12 +1027,16 @@ class TarkovMLEngine:
         Args:
             df: DataFrame containing all items for comparison.
             item_id: The ID of the target item to find similar items for.
-            n_neighbors: Number of similar items to return.
+            n_neighbors: Number of similar items to return. Must be positive.
             
         Returns:
             DataFrame of similar items with similarity_score column added.
-            Returns empty DataFrame if item_id not found.
+            Returns empty DataFrame if item_id not found or n_neighbors invalid.
         """
+        # Validate n_neighbors
+        if n_neighbors <= 0:
+            return pd.DataFrame()
+        
         if df.empty or item_id not in df['item_id'].values:
             return pd.DataFrame()
         
@@ -1077,7 +1090,7 @@ class TarkovMLEngine:
         
         Args:
             history_df: DataFrame with timestamp and profit columns.
-            periods_ahead: Number of future periods to predict.
+            periods_ahead: Number of future periods to predict. Must be positive.
             
         Returns:
             Dict containing:
@@ -1087,6 +1100,10 @@ class TarkovMLEngine:
                 - recent_avg: Average profit of last 5 periods
                 - volatility: Normalized standard deviation of profits
         """
+        # Validate periods_ahead
+        if periods_ahead <= 0:
+            periods_ahead = 12
+        
         if history_df.empty or len(history_df) < config.ML_MIN_ITEMS_FOR_ANALYSIS:
             return {'predictions': [], 'confidence': 0, 'trend': 'unknown', 'recent_avg': 0, 'volatility': 0}
         

@@ -46,13 +46,17 @@ def _get_env_int(key: str, default: int) -> int:
         
     Returns:
         Integer value from environment or default.
+        
+    Note:
+        Negative values are allowed only for MIN_PROFIT_FOR_DISPLAY.
+        Other settings require non-negative values.
     """
     env_value = os.environ.get(f'TARKOV_{key}')
     if env_value is None:
         return default
     try:
         result = int(env_value)
-        # Validate non-negative for most settings
+        # Validate non-negative for most settings (allow negative for profit thresholds)
         if result < 0 and key not in ('MIN_PROFIT_FOR_DISPLAY',):
             logger.warning("Negative value for TARKOV_%s: %d, using default %d", key, result, default)
             return default
@@ -71,12 +75,21 @@ def _get_env_float(key: str, default: float) -> float:
         
     Returns:
         Float value from environment or default.
+        
+    Note:
+        Returns default for NaN or Inf values.
     """
+    import math
     env_value = os.environ.get(f'TARKOV_{key}')
     if env_value is None:
         return default
     try:
-        return float(env_value)
+        result = float(env_value)
+        # Validate the result is a valid number
+        if math.isnan(result) or math.isinf(result):
+            logger.warning("Invalid float for TARKOV_%s: %r (NaN or Inf), using default %s", key, env_value, default)
+            return default
+        return result
     except ValueError:
         logger.warning("Invalid float for TARKOV_%s: %r, using default %s", key, env_value, default)
         return default
