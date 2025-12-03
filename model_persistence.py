@@ -32,10 +32,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# Persistence files stored alongside the database
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_STATE_FILE = os.path.join(BASE_DIR, 'ml_model_state.pkl')
-MODEL_HISTORY_FILE = os.path.join(BASE_DIR, 'ml_learned_history.json')
+# Persistence files from centralized config (stored in user's Documents folder)
+MODEL_STATE_FILE = config.MODEL_STATE_PATH
+MODEL_HISTORY_FILE = config.MODEL_HISTORY_PATH
 
 
 class ModelPersistence:
@@ -492,7 +491,24 @@ class ModelPersistence:
     
     def update_calibration(self, profit_mean: float, profit_std: float,
                           roi_mean: float, roi_std: float) -> None:
-        """Update calibration parameters with exponential smoothing."""
+        """Update calibration parameters with exponential smoothing.
+        
+        Args:
+            profit_mean: Mean profit value.
+            profit_std: Standard deviation of profit.
+            roi_mean: Mean ROI value.
+            roi_std: Standard deviation of ROI.
+            
+        Note:
+            NaN/inf values are ignored to prevent corruption of calibration state.
+        """
+        # Validate inputs - skip update if any value is invalid
+        for val, name in [(profit_mean, 'profit_mean'), (profit_std, 'profit_std'),
+                          (roi_mean, 'roi_mean'), (roi_std, 'roi_std')]:
+            if not isinstance(val, (int, float)) or math.isnan(val) or math.isinf(val):
+                logger.warning("Skipping calibration update due to invalid %s: %s", name, val)
+                return
+        
         alpha = 0.1  # Smoothing factor
         cal = self._state['calibration']
         

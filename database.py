@@ -23,9 +23,8 @@ __all__ = [
     'get_database_health'
 ]
 
-# Ensure DB is always created in the same directory as this script
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_NAME = os.path.join(BASE_DIR, 'tarkov_data.db')
+# Database path from centralized config (stored in user's Documents folder)
+DB_NAME = config.DB_PATH
 
 
 class DatabaseConnection:

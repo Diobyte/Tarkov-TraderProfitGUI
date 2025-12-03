@@ -1,7 +1,44 @@
+# Virtual environment
 .venv/
+venv/
+env/
+
+# IDE
 .vscode/
+.idea/
+
+# Python cache
 __pycache__/
-*.db
 *.pyc
+*.pyo
+
+# Database files (now stored in Documents/TarkovTraderProfit)
+*.db
+tarkov_data.db
+test_tarkov_data.db
+
+# ML model files (now stored in Documents/TarkovTraderProfit)
+*.pkl
+ml_model_state.pkl
+ml_learned_history.json
+
+# Log files (now stored in Documents/TarkovTraderProfit/logs)
 *.log
+logs/
+
+# PID files
 collector.pid
+collector_standalone.pid
+
+# Export files (now stored in Documents/TarkovTraderProfit/exports)
+exports/
+*.csv
+*.xlsx
+
+# Generated data files
+data/flea_level_requirements.json
+data/flea_level_requirements.csv
+
+# OS files
+.DS_Store
+Thumbs.db

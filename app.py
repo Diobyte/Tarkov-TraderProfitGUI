@@ -21,8 +21,9 @@ from typing import Tuple, Optional
 from datetime import datetime
 
 # --- Logging Setup ---
+log_file = os.path.join(config.LOGS_DIR, "app.log")
 logging.basicConfig(
-    filename='app.log',
+    filename=log_file,
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     encoding='utf-8',
@@ -33,8 +34,8 @@ logging.basicConfig(
 database.init_db()
 
 # --- Constants ---
-PID_FILE = "collector.pid"
-STANDALONE_PID_FILE = "collector_standalone.pid"
+PID_FILE = config.PID_FILE
+STANDALONE_PID_FILE = config.STANDALONE_PID_FILE
 COLORS = {
     'profit': '#00D26A',      # Vibrant green
     'loss': '#FF4757',        # Vibrant red
@@ -88,7 +89,8 @@ def start_collector() -> bool:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         collector_path = os.path.join(script_dir, "collector.py")
         
-        with open(os.path.join(script_dir, "collector_startup.log"), "a") as log:
+        startup_log = os.path.join(config.LOGS_DIR, "collector_startup.log")
+        with open(startup_log, "a") as log:
             proc = subprocess.Popen(
                 [sys.executable, "-u", collector_path],
                 creationflags=flags, stdout=log, stderr=subprocess.STDOUT,
@@ -301,14 +303,16 @@ def read_log_file(log_file: str, max_lines: int = config.LOG_MAX_LINES) -> str:
         return f"Error reading log: {e}"
 
 def get_log_files() -> list:
-    """Get list of available log files."""
+    """Get list of available log files from the logs directory."""
     log_files = []
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logs_dir = config.LOGS_DIR
     
-    log_patterns = ['*.log', 'collector*.log', 'app*.log']
-    for filename in os.listdir(base_dir):
+    if not os.path.exists(logs_dir):
+        return log_files
+    
+    for filename in os.listdir(logs_dir):
         if filename.endswith('.log'):
-            filepath = os.path.join(base_dir, filename)
+            filepath = os.path.join(logs_dir, filename)
             try:
                 size = os.path.getsize(filepath)
                 mtime = os.path.getmtime(filepath)

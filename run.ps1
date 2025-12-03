@@ -6,6 +6,124 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Tarkov Trader Profit - Auto-Setup & Launch" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
+# --- Data Directory Setup & Migration ---
+function Initialize-DataDirectory {
+    <#
+    .SYNOPSIS
+    Creates the data directory structure in Documents and migrates existing files.
+    #>
+    
+    # Determine data directory (check for custom env var)
+    $DataDir = $env:TARKOV_DATA_DIR
+    if (-not $DataDir) {
+        $DataDir = Join-Path $env:USERPROFILE "Documents\TarkovTraderProfit"
+    }
+    
+    Write-Host "[INFO] Data directory: $DataDir" -ForegroundColor Cyan
+    
+    # Create directory structure
+    $Directories = @(
+        $DataDir,
+        (Join-Path $DataDir "exports"),
+        (Join-Path $DataDir "logs")
+    )
+    
+    foreach ($dir in $Directories) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Write-Host "[INFO] Created directory: $dir" -ForegroundColor Green
+        }
+    }
+    
+    # Files to migrate from project directory to data directory
+    $FilesToMigrate = @(
+        @{ Source = "tarkov_data.db"; Dest = "tarkov_data.db" },
+        @{ Source = "ml_model_state.pkl"; Dest = "ml_model_state.pkl" },
+        @{ Source = "ml_learned_history.json"; Dest = "ml_learned_history.json" },
+        @{ Source = "collector.pid"; Dest = "collector.pid" },
+        @{ Source = "collector_standalone.pid"; Dest = "collector_standalone.pid" }
+    )
+    
+    # Log files to migrate
+    $LogFilesToMigrate = @(
+        "app.log",
+        "collector.log", 
+        "collector_startup.log",
+        "streamlit_server.log"
+    )
+    
+    $MigratedCount = 0
+    
+    # Migrate main files
+    foreach ($file in $FilesToMigrate) {
+        $SourcePath = Join-Path $ScriptPath $file.Source
+        $DestPath = Join-Path $DataDir $file.Dest
+        
+        if ((Test-Path $SourcePath) -and (-not (Test-Path $DestPath))) {
+            try {
+                Move-Item -Path $SourcePath -Destination $DestPath -Force
+                Write-Host "[MIGRATE] Moved $($file.Source) to Documents" -ForegroundColor Yellow
+                $MigratedCount++
+            } catch {
+                Write-Host "[WARN] Could not migrate $($file.Source): $_" -ForegroundColor Yellow
+            }
+        } elseif ((Test-Path $SourcePath) -and (Test-Path $DestPath)) {
+            # Both exist - keep the newer one, delete the old project file
+            $SourceInfo = Get-Item $SourcePath
+            $DestInfo = Get-Item $DestPath
+            
+            if ($SourceInfo.LastWriteTime -gt $DestInfo.LastWriteTime) {
+                # Source is newer, replace destination
+                try {
+                    Move-Item -Path $SourcePath -Destination $DestPath -Force
+                    Write-Host "[MIGRATE] Updated $($file.Dest) (source was newer)" -ForegroundColor Yellow
+                    $MigratedCount++
+                } catch {
+                    # If can't move (locked), just delete old project file
+                    Remove-Item $SourcePath -Force -ErrorAction SilentlyContinue
+                }
+            } else {
+                # Destination is newer or same, just delete old project file
+                Remove-Item $SourcePath -Force -ErrorAction SilentlyContinue
+                Write-Host "[CLEANUP] Removed old $($file.Source) from project folder" -ForegroundColor Gray
+            }
+        }
+    }
+    
+    # Migrate log files
+    $LogsDir = Join-Path $DataDir "logs"
+    foreach ($logFile in $LogFilesToMigrate) {
+        $SourcePath = Join-Path $ScriptPath $logFile
+        $DestPath = Join-Path $LogsDir $logFile
+        
+        if (Test-Path $SourcePath) {
+            try {
+                if (Test-Path $DestPath) {
+                    # Append old logs to new location, then delete
+                    Get-Content $SourcePath | Add-Content $DestPath
+                    Remove-Item $SourcePath -Force
+                } else {
+                    Move-Item -Path $SourcePath -Destination $DestPath -Force
+                }
+                Write-Host "[MIGRATE] Moved $logFile to logs folder" -ForegroundColor Yellow
+                $MigratedCount++
+            } catch {
+                # Log files might be locked, just try to delete
+                Remove-Item $SourcePath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    
+    if ($MigratedCount -gt 0) {
+        Write-Host "[INFO] Migrated $MigratedCount file(s) to new data directory" -ForegroundColor Green
+    }
+    
+    return $DataDir
+}
+
+# Initialize data directory and migrate files
+$DataDir = Initialize-DataDirectory
+
 # --- Helper: Find Python ---
 function Get-PythonPath {
     param([string]$Version)
@@ -164,48 +282,45 @@ Write-Host "[INFO] Cleaning up previous sessions..." -ForegroundColor Cyan
 
 # Helper to kill process by PID file
 function Kill-ProcessByPidFile {
-    param([string]$PidFileName)
-    $PidPath = Join-Path $ScriptPath $PidFileName
-    if (Test-Path $PidPath) {
+    param([string]$PidFilePath)
+    if (Test-Path $PidFilePath) {
         try {
-            $PidVal = Get-Content $PidPath -ErrorAction SilentlyContinue
+            $PidVal = Get-Content $PidFilePath -ErrorAction SilentlyContinue
             if ($PidVal -and (Get-Process -Id $PidVal -ErrorAction SilentlyContinue)) {
                 Stop-Process -Id $PidVal -Force -ErrorAction SilentlyContinue
-                Write-Host "[INFO] Stopped previous process (PID: $PidVal) from $PidFileName" -ForegroundColor Yellow
+                Write-Host "[INFO] Stopped previous process (PID: $PidVal)" -ForegroundColor Yellow
             }
-            Remove-Item $PidPath -Force -ErrorAction SilentlyContinue
+            Remove-Item $PidFilePath -Force -ErrorAction SilentlyContinue
         } catch {
-            Write-Host "[WARN] Failed to clean up $PidFileName" -ForegroundColor Yellow
+            Write-Host "[WARN] Failed to clean up PID file" -ForegroundColor Yellow
         }
     }
 }
 
-Kill-ProcessByPidFile "collector.pid"
-Kill-ProcessByPidFile "collector_standalone.pid"
+# Kill processes using new data directory paths
+Kill-ProcessByPidFile (Join-Path $DataDir "collector.pid")
+Kill-ProcessByPidFile (Join-Path $DataDir "collector_standalone.pid")
+
+# Also check old locations in project folder (for backward compatibility)
+Kill-ProcessByPidFile (Join-Path $ScriptPath "collector.pid")
+Kill-ProcessByPidFile (Join-Path $ScriptPath "collector_standalone.pid")
 
 # Give the OS a moment to release file locks
 Start-Sleep -Milliseconds 500
 
 # --- Step 5: Launch Dashboard ---
 Write-Host "[SUCCESS] Starting Dashboard..." -ForegroundColor Green
-Write-Host "Logs are being saved to 'streamlit_server.log'" -ForegroundColor Gray
+Write-Host "Data stored in: $DataDir" -ForegroundColor Gray
 Write-Host "You can close this window to stop the application." -ForegroundColor Gray
 
-# Clean up previous session logs
-$FilesToClean = @("app.log", "collector.log", "streamlit_server.log")
-foreach ($file in $FilesToClean) {
-    $fullPath = Join-Path $ScriptPath $file
-    if (Test-Path $fullPath) {
-        try {
-            Remove-Item $fullPath -Force -ErrorAction Stop
-        } catch {
-            # If we can't delete, just clear it. No need to warn the user loudly.
-            try { Clear-Content $fullPath -ErrorAction SilentlyContinue } catch {}
-        }
-    }
-}
+# Log file location (now in data directory)
+$LogsDir = Join-Path $DataDir "logs"
+$StreamlitLog = Join-Path $LogsDir "streamlit_server.log"
 
-$StreamlitLog = Join-Path $ScriptPath "streamlit_server.log"
+# Clear old streamlit log
+if (Test-Path $StreamlitLog) {
+    try { Clear-Content $StreamlitLog -ErrorAction SilentlyContinue } catch {}
+}
 
 # Use Start-Process to run python so we can redirect stdout/stderr reliably without PowerShell pipe issues
 # We use -Wait to keep the script running until Streamlit exits
@@ -261,7 +376,7 @@ try {
     }
 
     # --- Cleanup Background Collector ---
-    $PidFile = Join-Path $ScriptPath "collector.pid"
+    $PidFile = Join-Path $DataDir "collector.pid"
     if (Test-Path $PidFile) {
         try {
             $CollectorPid = Get-Content $PidFile -ErrorAction SilentlyContinue

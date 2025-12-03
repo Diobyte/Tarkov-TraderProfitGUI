@@ -1,5 +1,4 @@
-"""
-Data Export Module for Tarkov Trader Profit Analysis.
+"""Data Export Module for Tarkov Trader Profit Analysis.
 
 Provides functionality to export market data, analysis results,
 and trading recommendations in various formats (CSV, JSON, Excel).
@@ -10,18 +9,20 @@ import csv
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Final
+from typing import Dict, Any, Optional, List, Final, Union
 from io import StringIO, BytesIO
 
 import numpy as np
 import pandas as pd
 
+import config
+
 __all__: List[str] = ['DataExporter', 'ExportFormat', 'get_exporter']
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR: Final[str] = os.path.dirname(os.path.abspath(__file__))
-EXPORTS_DIR: Final[str] = os.path.join(BASE_DIR, 'exports')
+# Exports directory from centralized config (stored in user's Documents folder)
+EXPORTS_DIR: Final[str] = config.EXPORTS_DIR
 
 
 class ExportFormat:
@@ -337,9 +338,17 @@ class DataExporter:
         ]
         
         if 'profit' in df.columns:
-            profitable = (df['profit'] > 0).sum()
-            avg_profit = df[df['profit'] > 0]['profit'].mean()
-            max_profit = df['profit'].max()
+            # Handle potential NaN values in profit column
+            profit_series = pd.to_numeric(df['profit'], errors='coerce').fillna(0)
+            profitable = (profit_series > 0).sum()
+            profitable_df = df[profit_series > 0]
+            avg_profit = profit_series[profit_series > 0].mean() if profitable > 0 else 0
+            max_profit = profit_series.max() if len(df) > 0 else 0
+            # Handle NaN values
+            if pd.isna(avg_profit) or np.isinf(avg_profit):
+                avg_profit = 0
+            if pd.isna(max_profit) or np.isinf(max_profit):
+                max_profit = 0
             lines.extend([
                 f"- Profitable items: {profitable}",
                 f"- Average profit: ₽{avg_profit:,.0f}",

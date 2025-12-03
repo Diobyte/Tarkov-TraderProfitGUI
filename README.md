@@ -185,9 +185,36 @@ Once the app is running, your browser will open to `http://localhost:8501`.
 ### The Collector
 
 - Fetches data every **5 minutes**
-- Stores data in `tarkov_data.db` (SQLite)
+- Stores data in user's Documents folder (see [Data Storage](#-data-storage))
 - Automatically cleans up data older than **7 days**
 - Start/stop directly from the **System** tab
+
+---
+
+## 📁 Data Storage
+
+All generated data files are stored **outside the project folder** to keep the Git repository clean:
+
+```
+Documents/
+└── TarkovTraderProfit/
+    ├── tarkov_data.db          # SQLite database
+    ├── ml_model_state.pkl      # ML model state
+    ├── ml_learned_history.json # Learned patterns
+    ├── collector.pid           # Process ID file
+    ├── exports/                # Exported CSV/JSON files
+    └── logs/                   # Application logs
+        ├── app.log
+        ├── collector.log
+        └── collector_startup.log
+```
+
+To use a custom location, set the `TARKOV_DATA_DIR` environment variable:
+
+```powershell
+$env:TARKOV_DATA_DIR = "D:\TarkovData"
+.\run.ps1
+```
 
 ---
 
@@ -204,14 +231,15 @@ pytest tests/ -v
 
 All settings can be customized via environment variables with the `TARKOV_` prefix:
 
-| Variable                             | Default | Description                   |
-| ------------------------------------ | ------- | ----------------------------- |
-| `TARKOV_COLLECTION_INTERVAL_MINUTES` | `5`     | Data fetch frequency          |
-| `TARKOV_DATA_RETENTION_DAYS`         | `7`     | Days to keep historical data  |
-| `TARKOV_API_TIMEOUT_SECONDS`         | `30`    | API request timeout           |
-| `TARKOV_ALERT_HIGH_PROFIT_THRESHOLD` | `10000` | Profit alert trigger (₽)      |
-| `TARKOV_ALERT_HIGH_ROI_THRESHOLD`    | `50.0`  | ROI alert trigger (%)         |
-| `TARKOV_ML_ANOMALY_CONTAMINATION`    | `0.05`  | Anomaly detection sensitivity |
+| Variable                             | Default                          | Description                   |
+| ------------------------------------ | -------------------------------- | ----------------------------- |
+| `TARKOV_DATA_DIR`                    | `~/Documents/TarkovTraderProfit` | Data storage location         |
+| `TARKOV_COLLECTION_INTERVAL_MINUTES` | `5`                              | Data fetch frequency          |
+| `TARKOV_DATA_RETENTION_DAYS`         | `7`                              | Days to keep historical data  |
+| `TARKOV_API_TIMEOUT_SECONDS`         | `30`                             | API request timeout           |
+| `TARKOV_ALERT_HIGH_PROFIT_THRESHOLD` | `10000`                          | Profit alert trigger (₽)      |
+| `TARKOV_ALERT_HIGH_ROI_THRESHOLD`    | `50.0`                           | ROI alert trigger (%)         |
+| `TARKOV_ML_ANOMALY_CONTAMINATION`    | `0.05`                           | Anomaly detection sensitivity |
 
 Example:
 

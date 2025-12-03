@@ -11,13 +11,25 @@ Example:
 Note:
     Values are validated and logged when invalid values are provided.
     Invalid values fall back to defaults to ensure application stability.
+    
+Data Storage:
+    By default, data files (database, ML models, exports, logs) are stored
+    in the user's Documents folder under 'TarkovTraderProfit'. This keeps
+    generated files out of the Git repository.
+    
+    Override with: TARKOV_DATA_DIR=/custom/path
 """
 
 import os
 import logging
+from pathlib import Path
 from typing import Dict, Final, List
 
 __all__: List[str] = [
+    # Data paths
+    'DATA_DIR', 'DB_PATH', 'MODEL_STATE_PATH', 'MODEL_HISTORY_PATH',
+    'EXPORTS_DIR', 'LOGS_DIR', 'PID_FILE', 'STANDALONE_PID_FILE',
+    # API settings
     'API_URL', 'COLLECTION_INTERVAL_MINUTES', 'DATA_RETENTION_DAYS', 'API_TIMEOUT_SECONDS',
     'DB_LOOKBACK_WINDOW_MINUTES', 'LIQUIDITY_NORMALIZATION_THRESHOLD', 'MAX_LIQUIDITY_SCORE',
     'STREAMLIT_CACHE_TTL_SECONDS', 'LOG_MAX_LINES',
@@ -100,7 +112,70 @@ def _get_env_str(key: str, default: str) -> str:
     return os.environ.get(f'TARKOV_{key}', default)
 
 
-# API Configuration
+# =============================================================================
+# DATA STORAGE PATHS
+# =============================================================================
+# By default, store data in user's Documents folder to keep generated files
+# out of the Git repository. Can be overridden with TARKOV_DATA_DIR env var.
+
+def _get_data_dir() -> Path:
+    """
+    Get the data directory for storing database, ML models, exports, and logs.
+    
+    Priority:
+    1. TARKOV_DATA_DIR environment variable (if set)
+    2. User's Documents folder / TarkovTraderProfit
+    
+    Creates the directory if it doesn't exist.
+    
+    Returns:
+        Path to the data directory.
+    """
+    # Check for custom path via environment variable
+    custom_path = os.environ.get('TARKOV_DATA_DIR')
+    if custom_path:
+        data_dir = Path(custom_path)
+    else:
+        # Use Documents folder (cross-platform)
+        # On Windows: C:\Users\<user>\Documents\TarkovTraderProfit
+        # On Linux/Mac: ~/Documents/TarkovTraderProfit (or ~/TarkovTraderProfit if no Documents)
+        documents = Path.home() / "Documents"
+        if not documents.exists():
+            documents = Path.home()
+        data_dir = documents / "TarkovTraderProfit"
+    
+    # Create directory structure
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "exports").mkdir(exist_ok=True)
+    (data_dir / "logs").mkdir(exist_ok=True)
+    
+    return data_dir
+
+
+# Initialize data directory
+DATA_DIR: Final[Path] = _get_data_dir()
+
+# Database path
+DB_PATH: Final[str] = str(DATA_DIR / "tarkov_data.db")
+
+# ML Model persistence paths
+MODEL_STATE_PATH: Final[str] = str(DATA_DIR / "ml_model_state.pkl")
+MODEL_HISTORY_PATH: Final[str] = str(DATA_DIR / "ml_learned_history.json")
+
+# Export directory
+EXPORTS_DIR: Final[str] = str(DATA_DIR / "exports")
+
+# Logs directory
+LOGS_DIR: Final[str] = str(DATA_DIR / "logs")
+
+# PID files for collector process management
+PID_FILE: Final[str] = str(DATA_DIR / "collector.pid")
+STANDALONE_PID_FILE: Final[str] = str(DATA_DIR / "collector_standalone.pid")
+
+
+# =============================================================================
+# API CONFIGURATION
+# =============================================================================
 API_URL: Final[str] = _get_env_str('API_URL', 'https://api.tarkov.dev/graphql')
 COLLECTION_INTERVAL_MINUTES: Final[int] = _get_env_int('COLLECTION_INTERVAL_MINUTES', 5)
 DATA_RETENTION_DAYS: Final[int] = _get_env_int('DATA_RETENTION_DAYS', 7)
@@ -143,38 +218,51 @@ VOLUME_WEIGHT_IN_SCORE: float = _get_env_float('VOLUME_WEIGHT_IN_SCORE', 0.15)
 
 CATEGORY_LOCKS: Dict[str, int] = {
     # === WEAPONS ===
+    # API uses different names than wiki - include both for safety
     "Assault rifle": 25,
     "Assault carbine": 25,
     "Bolt-action rifle": 20,
     "Sniper rifle": 20,
     "Marksman rifle": 25,
     "Submachine gun": 20,
+    "SMG": 20,  # API uses "SMG"
     "Machine gun": 25,
+    "Machinegun": 25,  # API uses "Machinegun"
     "Throwable weapon": 25,
     
-    # === WEAPON MODS ===
+    # === WEAPON MODS (Functional Mods) ===
     "Foregrip": 20,
     "Auxiliary part": 25,
+    "Auxiliary Mod": 25,  # API uses "Auxiliary Mod"
     "Flashlight": 25,
     "Tactical combo device": 25,
+    "Comb. tact. device": 25,  # API uses this
     "Laser sight": 25,
     "Muzzle device": 20,
     "Muzzle adapter": 20,
     "Flash hider": 20,
+    "Flashhider": 20,  # API uses "Flashhider"
+    "Comb. muzzle device": 20,  # API combined muzzle device
     "Suppressor": 25,
     "Silencer": 25,
     
     # === AMMO ===
     "Ammo pack": 25,
     "Ammunition pack": 25,
+    "Ammo container": 25,  # API uses "Ammo container"
     
     # === GEAR ===
     "Backpack": 25,
     "Headwear": 20,
     "Eyewear": 20,
+    "Face Cover": 20,  # Eyewear-like, API category
     "Armor component": 30,
     "Gear component": 30,
+    "Armor Plate": 30,  # API uses "Armor Plate"
     "Armored equipment": 25,
+    "Common container": 25,  # Storage containers
+    "Locking container": 25,  # Storage containers
+    "Port. container": 25,  # Portable containers
     "Container": 25,
     "Secure container": 25,
     
@@ -183,23 +271,31 @@ CATEGORY_LOCKS: Dict[str, int] = {
     "Energy element": 20,
     "Battery": 20,
     "Flammable": 20,
+    "Fuel": 20,  # Flammable materials
+    "Lubricant": 20,  # Flammable materials
     "Household goods": 20,
     "Household material": 20,
+    "Building material": 20,  # Household-like
     "Medical supply": 20,
     "Medical supplies": 20,
     "Valuable": 30,
     "Valuables": 30,
+    "Jewelry": 30,  # Valuables category in API
     "Other": 25,
     
     # === MEDICAL ===
     "Stimulant": 30,
     "Injector": 30,
     "Injury treatment": 20,
+    "Medical item": 20,  # API category
     "Medkit": 20,
+    "Medikit": 20,  # API uses "Medikit"
     "Pills": 20,
+    "Drug": 20,  # Pills category in API
     
     # === KEYS ===
     "Mechanical key": 25,
+    "Mechanical Key": 25,  # API uses capital K
     "Electronic key": 30,
     "Keycard": 30,
 }
@@ -218,37 +314,48 @@ ITEM_LOCKS: Dict[str, int] = {
     "VPX Flash Storage Module": 20,
     "Virtex programmable processor": 35,
     
-    # === ENERGY ELEMENTS ===
+    # === ENERGY ELEMENTS (Level 20 base) ===
     "6-STEN-140-M military battery": 40,
     "GreenBat lithium battery": 35,
     
-    # === FILTERS ===
+    # === FILTERS (Other category, Level 25 base) ===
     "FP-100 filter absorber": 35,
     
-    # === FLAMMABLE / GUNPOWDER ===
+    # === FLAMMABLE / GUNPOWDER (Level 20 base) ===
     "Gunpowder Eagle": 30,
     "Gunpowder Hawk": 30,
     
-    # === MEDICAL SUPPLIES ===
+    # === MEDICAL SUPPLIES (Level 20 base) ===
     "LEDX Skin Transilluminator": 35,
     
-    # === MEDICAL - INJURY TREATMENT ===
+    # === MEDICAL - INJURY TREATMENT (Level 20 base) ===
     "CALOK-B hemostatic applicator": 30,
+    "CALOK-B": 30,  # Short name match
     "Surv12 field surgical kit": 35,
     
-    # === STIMULANTS / INJECTORS ===
+    # === STIMULANTS / INJECTORS (Level 30 base) ===
     "MULE stimulant injector": 40,
     "eTG-change regenerative stimulant injector": 40,
+    "etg-change": 40,  # Partial match
     
-    # === GEAR COMPONENTS / ARMOR PLATES ===
+    # === ARMOR PLATES (Level 30 base for Gear component) ===
+    # Granit plates
     "Granit 4 ballistic plate": 40,
+    "Granit 4RS ballistic plates (Front)": 40,
+    "Granit 4RS ballistic plates (Back)": 40,
+    "Granit Br5 ballistic plate": 40,
+    # Korund plates
     "Korund-VM ballistic plate": 40,
+    "Korund-VM ballistic plates (Front)": 40,
+    "Korund-VM ballistic plates (Back)": 40,
     
-    # === HEADGEAR ===
+    # === HEADGEAR (Level 20 base) ===
     "DevTac Ronin ballistic helmet": 40,
-    "Vulkan-5 (LShZ-5) heavy helmet": 40,
+    "DevTac Ronin Respirator": 40,
+    "Vulkan-5 LShZ-5 bulletproof helmet": 40,  # API name
+    "Vulkan-5 (LShZ-5) heavy helmet": 40,  # Legacy name
     
-    # === CONTAINERS ===
+    # === CONTAINERS (Level 25 base for Common container) ===
     "Injector case": 35,
     "S I C C organizational pouch": 40,
     "SICC organizational pouch": 40,
@@ -257,7 +364,7 @@ ITEM_LOCKS: Dict[str, int] = {
     "Accuracy International AXMC .338 LM bolt-action sniper rifle": 40,
     "SWORD International Mk-18 .338 LM marksman rifle": 40,
     
-    # === AMMO PACKS ===
+    # === AMMO PACKS (Level 25 base for Ammo container) ===
     ".300 Blackout CBJ ammo pack": 40,
     ".308 M80 ammo pack": 35,
     ".366 TKM AP-M ammo pack": 35,
@@ -266,11 +373,14 @@ ITEM_LOCKS: Dict[str, int] = {
     "PS12B": 40,
     "23x75mm Zvezda flashbang round ammo pack": 40,
     "5.45x39mm 7N40 ammo pack": 35,
+    "7N40 ammo pack": 35,  # Partial match for both 30 and 120 packs
     "5.56x45mm M855A1 ammo pack": 40,
+    "M855A1 ammo pack": 40,  # Matches both 50 and 100 pcs versions
     "7.62x39mm PP gzh ammo pack": 30,
     "7.62x51mm M80 ammo pack": 35,
-    "M80": 35,
+    "M80 ammo pack": 35,
     "7.62x54mm PS gzh ammo pack": 40,
+    "PS gzh ammo pack": 40,
     "9x39mm PAB-9 gs ammo pack": 40,
     ".300 Blackout": 40,
     "Blackout CBJ": 40,

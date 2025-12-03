@@ -21,12 +21,13 @@ from utils import get_flea_level_requirement
 # Configuration
 # Loaded from config.py
 
-# Configure Logging
+# Configure Logging - use centralized logs directory
+log_file = os.path.join(config.LOGS_DIR, "collector.log")
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("collector.log", encoding='utf-8'),
+        logging.FileHandler(log_file, encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -436,7 +437,8 @@ if __name__ == "__main__":
     parser.add_argument("--standalone", action="store_true", help="Run in standalone mode (uses collector_standalone.pid)")
     args = parser.parse_args()
 
-    pid_file = "collector_standalone.pid" if args.standalone else "collector.pid"
+    # Use PID file paths from config (stored in Documents folder)
+    pid_file = config.STANDALONE_PID_FILE if args.standalone else config.PID_FILE
     
     # Write PID file
     with open(pid_file, 'w') as f:

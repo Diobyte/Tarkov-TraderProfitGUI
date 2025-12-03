@@ -6,6 +6,39 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Tarkov Trader Profit - Data Collector Only" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
+# --- Data Directory Setup ---
+function Initialize-DataDirectory {
+    <#
+    .SYNOPSIS
+    Creates the data directory structure in Documents if it doesn't exist.
+    #>
+    
+    # Determine data directory (check for custom env var)
+    $DataDir = $env:TARKOV_DATA_DIR
+    if (-not $DataDir) {
+        $DataDir = Join-Path $env:USERPROFILE "Documents\TarkovTraderProfit"
+    }
+    
+    # Create directory structure
+    $Directories = @(
+        $DataDir,
+        (Join-Path $DataDir "exports"),
+        (Join-Path $DataDir "logs")
+    )
+    
+    foreach ($dir in $Directories) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+    }
+    
+    return $DataDir
+}
+
+# Initialize data directory
+$DataDir = Initialize-DataDirectory
+Write-Host "[INFO] Data directory: $DataDir" -ForegroundColor Cyan
+
 # --- Helper: Find Python ---
 function Get-PythonPath {
     param([string]$Version)
