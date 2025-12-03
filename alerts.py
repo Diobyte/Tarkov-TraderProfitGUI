@@ -40,7 +40,7 @@ def _atomic_json_dump(file_path: str, payload: Dict[str, Any] | List[Dict[str, A
         os.replace(temp_name, file_path)
     except OSError as e:
         # Fall back to direct write if atomic write fails
-        logger.warning(f"Atomic write failed, using direct write: {e}")
+        logger.warning("Atomic write failed, using direct write: %s", e)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, indent=2, default=str)
 
@@ -139,9 +139,9 @@ class AlertManager:
                             self._alerts[alert_id] = Alert.from_dict(alert_data)
                         except TypeError:
                             logger.warning("Skipping invalid alert entry while loading alerts")
-                logger.info(f"Loaded {len(self._alerts)} alerts")
+                logger.info("Loaded %d alerts", len(self._alerts))
             except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to load alerts, recreating defaults: {e}")
+                logger.warning("Failed to load alerts, recreating defaults: %s", e)
                 self._alerts = {}
                 self._create_default_alerts()
         else:
@@ -157,7 +157,7 @@ class AlertManager:
                 max_history = max(config.ALERT_MAX_HISTORY, 1)
                 self._history = history[-max_history:]
             except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to load alert history, starting fresh: {e}")
+                logger.warning("Failed to load alert history, starting fresh: %s", e)
                 self._history = []
     
     def _create_default_alerts(self) -> None:
@@ -201,7 +201,7 @@ class AlertManager:
             _atomic_json_dump(self.alerts_file, data)
             return True
         except Exception as e:
-            logger.error(f"Failed to save alerts: {e}")
+            logger.error("Failed to save alerts: %s", e)
             return False
     
     def save_history(self) -> bool:
@@ -211,7 +211,7 @@ class AlertManager:
             _atomic_json_dump(self.history_file, self._history[-max_history:])
             return True
         except Exception as e:
-            logger.error(f"Failed to save alert history: {e}")
+            logger.error("Failed to save alert history: %s", e)
             return False
     
     def add_alert(self, alert: Alert) -> bool:
@@ -346,9 +346,9 @@ class AlertManager:
             try:
                 callback(alert, item)
             except Exception as e:
-                logger.error(f"Alert callback failed: {e}")
+                logger.error("Alert callback failed: %s", e)
         
-        logger.info(f"Alert triggered: {alert.id} for {item.get('name')}")
+        logger.info("Alert triggered: %s for %s", alert.id, item.get('name'))
         return notification
     
     def get_recent_alerts(self, hours: int = 24) -> List[Dict[str, Any]]:

@@ -20,7 +20,7 @@ def _get_env_int(key: str, default: int) -> int:
     try:
         return int(env_value)
     except ValueError:
-        logger.warning(f"Invalid integer for TARKOV_{key}: {env_value!r}, using default {default}")
+        logger.warning("Invalid integer for TARKOV_%s: %r, using default %d", key, env_value, default)
         return default
 
 
@@ -32,7 +32,7 @@ def _get_env_float(key: str, default: float) -> float:
     try:
         return float(env_value)
     except ValueError:
-        logger.warning(f"Invalid float for TARKOV_{key}: {env_value!r}, using default {default}")
+        logger.warning("Invalid float for TARKOV_%s: %r, using default %s", key, env_value, default)
         return default
 
 

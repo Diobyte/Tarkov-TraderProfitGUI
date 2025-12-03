@@ -88,7 +88,7 @@ def start_collector() -> bool:
                 f.write(str(proc.pid))
             return True
     except Exception as e:
-        logging.error(f"Failed to start collector: {e}")
+        logging.error("Failed to start collector: %s", e)
     return False
 
 def stop_collector() -> bool:
@@ -558,7 +558,7 @@ def load_data() -> pd.DataFrame:
         df = utils.calculate_metrics(df)
         return df
     except Exception as e:
-        logging.error(f"Error loading data: {e}")
+        logging.error("Error loading data: %s", e)
         return pd.DataFrame()
 
 def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
@@ -663,7 +663,7 @@ def render_header() -> None:
         try:
             db_health = database.get_database_health()
         except Exception as e:  # pragma: no cover - defensive
-            logging.error(f"Failed to get database health: {e}")
+            logging.error("Failed to get database health: %s", e)
             db_health = {
                 'status': 'error',
                 'data_age_hours': 0,
@@ -677,7 +677,7 @@ def render_header() -> None:
             ml_engine = get_ml_engine()
             learning_status = ml_engine.get_trend_learning_status()
         except Exception as e:  # pragma: no cover - defensive
-            logging.error(f"Failed to get ML learning status: {e}")
+            logging.error("Failed to get ML learning status: %s", e)
             learning_status = {
                 'enabled': False,
                 'learning_quality': 0,
@@ -799,7 +799,7 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
         else:
             top = reliable_df.nlargest(6, 'profit')
     except Exception as e:
-        logging.warning(f"ML ranking failed, using profit: {e}")
+        logging.warning("ML ranking failed, using profit: %s", e)
         top = reliable_df.nlargest(6, 'profit')
     
     cols = st.columns(3)
@@ -913,7 +913,7 @@ def render_data_table(df: pd.DataFrame) -> None:
         else:
             ml_df = ml_df.sort_values('profit', ascending=False)
     except Exception as e:
-        logging.warning(f"ML enrichment failed: {e}")
+        logging.warning("ML enrichment failed: %s", e)
         ml_df = reliable_df.copy()
         ml_df['trend'] = '❓'
         ml_df = ml_df.sort_values('profit', ascending=False)

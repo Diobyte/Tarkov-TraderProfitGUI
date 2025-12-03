@@ -289,12 +289,12 @@ class TarkovMLEngine:
             self._last_trend_update = datetime.now()
             
             total_records = self.profit_stats.get('total_records', 0) if self.profit_stats else 0
-            logger.info(f"Loaded trend data for {len(self.trend_data)} items "
-                       f"({total_records} records)")
+            logger.info("Loaded trend data for %d items (%d records)",
+                       len(self.trend_data), total_records)
             return True
             
         except Exception as e:
-            logger.error(f"Failed to load trend data: {e}")
+            logger.error("Failed to load trend data: %s", e)
             return False
     
     def calculate_trend_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -550,7 +550,7 @@ class TarkovMLEngine:
             self.persistence.save_state()
             self.persistence.save_history()
         
-        logger.info(f"Trained on {items_processed} items, {profitable_count} profitable")
+        logger.info("Trained on %d items, %d profitable", items_processed, profitable_count)
         
         return {
             'status': 'success',

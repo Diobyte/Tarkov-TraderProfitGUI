@@ -32,7 +32,7 @@ logging.basicConfig(
 
 def handle_exit(signum: int, frame: Optional[FrameType]) -> None:
     """Handle termination signals gracefully."""
-    logging.info(f"Collector stopped by signal {signum}.")
+    logging.info("Collector stopped by signal %d.", signum)
     sys.exit(0)
 
 # Register signal handlers
@@ -90,23 +90,23 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
                 data = response.json()
                 # Check for GraphQL errors
                 if 'errors' in data:
-                    logging.error(f"GraphQL errors: {data['errors']}")
+                    logging.error("GraphQL errors: %s", data['errors'])
                     return None
                 return data
             except ValueError:
                 logging.error("Failed to decode JSON response.")
                 return None
         else:
-            logging.error(f"Query failed with code {response.status_code}: {response.text[:200]}")
+            logging.error("Query failed with code %d: %s", response.status_code, response.text[:200])
             return None
     except requests.Timeout:
-        logging.error(f"API request timed out after {config.API_TIMEOUT_SECONDS} seconds.")
+        logging.error("API request timed out after %d seconds.", config.API_TIMEOUT_SECONDS)
         return None
     except requests.ConnectionError:
         logging.error("API connection error. Check your internet connection.")
         return None
     except Exception as e:
-        logging.error(f"Error querying API: {e}")
+        logging.error("Error querying API: %s", e)
         return None
 
 def fetch_and_store_data() -> None:
@@ -174,7 +174,7 @@ def fetch_and_store_data() -> None:
     limit = 1000
     
     while True:
-        logging.info(f"Fetching items offset={offset} limit={limit}...")
+        logging.info("Fetching items offset=%d limit=%d...", offset, limit)
         result = run_query(query, variables={"offset": offset, "limit": limit})
         
         if not result or 'data' not in result or 'items' not in result['data']:
@@ -195,7 +195,7 @@ def fetch_and_store_data() -> None:
         # Be nice to the API
         time.sleep(0.5)
 
-    logging.info(f"Fetched total {len(all_items)} items from API. Processing...")
+    logging.info("Fetched total %d items from API. Processing...", len(all_items))
     
     batch_data = []
     current_time = datetime.now()
@@ -270,9 +270,12 @@ def fetch_and_store_data() -> None:
             if avg_24h_price > 0:
                 price_velocity = ((avg_24h_price - best_flea_price) / avg_24h_price) * 100
             
+            # Ensure last_offer_count is non-negative
+            safe_offer_count = max(0, last_offer_count)
+            
             # Calculate liquidity score based on offer count (more offers = easier to buy)
             # Normalize: 0-10 offers = low, 10-50 = medium, 50+ = high liquidity
-            liquidity_score = min(last_offer_count / 50.0, 1.0) * 100 if last_offer_count else 0
+            liquidity_score = min(safe_offer_count / 50.0, 1.0) * 100 if safe_offer_count else 0
             
             # Add to batch - now with enhanced data
             batch_data.append((
@@ -288,13 +291,13 @@ def fetch_and_store_data() -> None:
     if batch_data:
         database.save_prices_batch(batch_data)
         duration = time.time() - start_time
-        logging.info(f"Stored {len(batch_data)} items in {duration:.2f} seconds.")
+        logging.info("Stored %d items in %.2f seconds.", len(batch_data), duration)
         
         # Train the ML model on the new data
         try:
             train_model_on_batch(batch_data)
         except Exception as e:
-            logging.warning(f"Model training failed (non-critical): {e}")
+            logging.warning("Model training failed (non-critical): %s", e)
     else:
         logging.info("No profitable items found or API error.")
 
@@ -329,8 +332,8 @@ def train_model_on_batch(batch_data: list) -> None:
     ml_engine = get_ml_engine()
     result = ml_engine.train_on_data(df, save=True)
     
-    logging.info(f"Model training: {result['items_processed']} items, "
-                f"{result['profitable_count']} profitable")
+    logging.info("Model training: %d items, %d profitable",
+                result['items_processed'], result['profitable_count'])
 
 
 def cleanup_job() -> None:
@@ -338,9 +341,9 @@ def cleanup_job() -> None:
     try:
         deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False)
         if deleted > 0:
-            logging.info(f"Cleaned up {deleted} old records.")
+            logging.info("Cleaned up %d old records.", deleted)
     except Exception as e:
-        logging.error(f"Error during cleanup: {e}")
+        logging.error("Error during cleanup: %s", e)
 
 
 def job() -> None:
@@ -348,7 +351,7 @@ def job() -> None:
     try:
         fetch_and_store_data()
     except Exception as e:
-        logging.error(f"Job failed: {e}")
+        logging.error("Job failed: %s", e)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -362,7 +365,7 @@ if __name__ == "__main__":
         f.write(str(os.getpid()))
 
     database.init_db()
-    logging.info(f"Starting collector (Standalone: {args.standalone})...")
+    logging.info("Starting collector (Standalone: %s)...", args.standalone)
     
     try:
         # Check last run time to respect rate limits
@@ -373,7 +376,10 @@ if __name__ == "__main__":
             time_since_last = datetime.now() - last_run
             if time_since_last < timedelta(minutes=config.COLLECTION_INTERVAL_MINUTES):
                 should_run_immediately = False
-                logging.info(f"Last run was {time_since_last} ago. Skipping immediate run to respect {config.COLLECTION_INTERVAL_MINUTES}-minute rate limit.")
+                logging.info(
+                    "Last run was %s ago. Skipping immediate run to respect %d-minute rate limit.",
+                    time_since_last, config.COLLECTION_INTERVAL_MINUTES
+                )
         
         if should_run_immediately:
             job()
@@ -389,7 +395,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logging.info("Collector stopped by user.")
     except Exception as e:
-        logging.critical(f"Collector crashed: {e}")
+        logging.critical("Collector crashed: %s", e)
     finally:
         if os.path.exists(pid_file):
             try:

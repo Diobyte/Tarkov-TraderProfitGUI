@@ -67,9 +67,9 @@ class ModelPersistence:
             try:
                 with open(self.state_file, 'rb') as f:
                     self._state = pickle.load(f)
-                logger.info(f"Loaded model state from {self.state_file}")
+                logger.info("Loaded model state from %s", self.state_file)
             except Exception as e:
-                logger.warning(f"Failed to load model state: {e}")
+                logger.warning("Failed to load model state: %s", e)
                 self._state = self._get_default_state()
         else:
             self._state = self._get_default_state()
@@ -80,9 +80,9 @@ class ModelPersistence:
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     self._history = json.load(f)
-                logger.info(f"Loaded learned history from {self.history_file}")
+                logger.info("Loaded learned history from %s", self.history_file)
             except Exception as e:
-                logger.warning(f"Failed to load learned history: {e}")
+                logger.warning("Failed to load learned history: %s", e)
                 self._history = self._get_default_history()
         else:
             self._history = self._get_default_history()
@@ -125,10 +125,10 @@ class ModelPersistence:
             self._state['last_updated'] = datetime.now().isoformat()
             with open(self.state_file, 'wb') as f:
                 pickle.dump(self._state, f)
-            logger.info(f"Saved model state to {self.state_file}")
+            logger.info("Saved model state to %s", self.state_file)
             return True
         except Exception as e:
-            logger.error(f"Failed to save model state: {e}")
+            logger.error("Failed to save model state: %s", e)
             return False
     
     def save_history(self) -> bool:
@@ -136,10 +136,10 @@ class ModelPersistence:
         try:
             with open(self.history_file, 'w', encoding='utf-8') as f:
                 json.dump(self._history, f, indent=2, default=str)
-            logger.info(f"Saved learned history to {self.history_file}")
+            logger.info("Saved learned history to %s", self.history_file)
             return True
         except Exception as e:
-            logger.error(f"Failed to save learned history: {e}")
+            logger.error("Failed to save learned history: %s", e)
             return False
     
     def update_item_statistics(self, item_id: str, profit: float, 
@@ -447,7 +447,7 @@ class ModelPersistence:
             del self._state['item_statistics'][item_id]
         
         if to_remove:
-            logger.info(f"Removed {len(to_remove)} stale items from learned state")
+            logger.info("Removed %d stale items from learned state", len(to_remove))
         
         return len(to_remove)
 

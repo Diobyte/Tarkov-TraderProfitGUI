@@ -136,10 +136,10 @@ def retry_db_op(
                     if "locked" in str(e).lower() and attempt < effective_retries - 1:
                         time.sleep(effective_delay)
                         continue
-                    logging.error(f"Database error in %s: %s", func.__name__, e)
+                    logging.error("Database error in %s: %s", func.__name__, e)
                     raise
                 except Exception as e:  # pragma: no cover - unexpected path
-                    logging.error(f"Unexpected error in %s: %s", func.__name__, e)
+                    logging.error("Unexpected error in %s: %s", func.__name__, e)
                     raise
             # Should be unreachable because we re-raise above
             return None  # pragma: no cover
@@ -260,7 +260,7 @@ def save_prices_batch(items: List[Tuple]) -> None:
     
     # Validate tuple length is expected
     if first_len not in (15, 25):
-        logging.warning(f"Unexpected item tuple length: {first_len}. Expected 15 or 25.")
+        logging.warning("Unexpected item tuple length: %d. Expected 15 or 25.", first_len)
         
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()

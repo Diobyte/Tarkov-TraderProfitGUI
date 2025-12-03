@@ -70,7 +70,7 @@ class DataExporter:
             filename = self._generate_filename(prefix, "csv")
         
         df.to_csv(filename, index=False, encoding='utf-8')
-        logger.info(f"Exported {len(df)} rows to {filename}")
+        logger.info("Exported %d rows to %s", len(df), filename)
         return filename
     
     def export_to_json(self, data: Any, filename: Optional[str] = None,
@@ -99,7 +99,7 @@ class DataExporter:
             else:
                 json.dump(data, f, default=str)
         
-        logger.info(f"Exported data to {filename}")
+        logger.info("Exported data to %s", filename)
         return filename
     
     def export_to_excel(self, df: pd.DataFrame, filename: Optional[str] = None,
@@ -127,18 +127,18 @@ class DataExporter:
             for char in invalid_chars:
                 safe_sheet_name = safe_sheet_name.replace(char, '_')
             df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
-            logger.info(f"Exported {len(df)} rows to {filename}")
+            logger.info("Exported %d rows to %s", len(df), filename)
         except ImportError:
             # Fallback to CSV if openpyxl not installed
             logger.warning("openpyxl not installed, falling back to CSV")
             filename = filename.replace('.xlsx', '.csv')
             df.to_csv(filename, index=False, encoding='utf-8')
-            logger.info(f"Exported {len(df)} rows to {filename} (CSV fallback)")
+            logger.info("Exported %d rows to %s (CSV fallback)", len(df), filename)
         except Exception as e:
-            logger.error(f"Excel export failed: {e}, falling back to CSV")
+            logger.error("Excel export failed: %s, falling back to CSV", e)
             filename = filename.replace('.xlsx', '.csv')
             df.to_csv(filename, index=False, encoding='utf-8')
-            logger.info(f"Exported {len(df)} rows to {filename} (CSV fallback)")
+            logger.info("Exported %d rows to %s (CSV fallback)", len(df), filename)
         
         return filename
     
@@ -177,7 +177,7 @@ class DataExporter:
             if len(df) > 100:
                 f.write(f"\n*... and {len(df) - 100} more rows*\n")
         
-        logger.info(f"Exported markdown to {filename}")
+        logger.info("Exported markdown to %s", filename)
         return filename
     
     def export_recommendations(self, df: pd.DataFrame, 
@@ -257,7 +257,7 @@ class DataExporter:
             f.write(summary)
         results['summary'] = md_path
         
-        logger.info(f"Exported market snapshot: {len(df)} items")
+        logger.info("Exported market snapshot: %d items", len(df))
         return results
     
     def _generate_summary(self, df: pd.DataFrame) -> str:
@@ -332,10 +332,10 @@ class DataExporter:
                         os.remove(filepath)
                         deleted += 1
                     except Exception as e:
-                        logger.warning(f"Failed to delete {filepath}: {e}")
+                        logger.warning("Failed to delete %s: %s", filepath, e)
         
         if deleted:
-            logger.info(f"Cleaned up {deleted} old export files")
+            logger.info("Cleaned up %d old export files", deleted)
         
         return deleted
 
