@@ -6,6 +6,30 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Tarkov Trader Profit - Auto-Setup & Launch" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
+# --- Debug: Check Default Browser Configuration ---
+function Test-BrowserConfiguration {
+    <#
+    .SYNOPSIS
+    Checks if Windows has a properly configured default browser for HTTP URLs.
+    #>
+    Write-Host "[DEBUG] Checking browser configuration..." -ForegroundColor Gray
+    
+    try {
+        # Check HTTP URL handler in registry
+        $httpHandler = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice" -ErrorAction SilentlyContinue
+        if ($httpHandler -and $httpHandler.ProgId) {
+            Write-Host "[DEBUG] Default HTTP handler: $($httpHandler.ProgId)" -ForegroundColor Gray
+        } else {
+            Write-Host "[WARN] No default HTTP browser handler found. Browser may not open automatically." -ForegroundColor Yellow
+            Write-Host "[INFO] To fix: Windows Settings > Apps > Default apps > Set defaults by link type > HTTP" -ForegroundColor Cyan
+        }
+    } catch {
+        Write-Host "[DEBUG] Could not check browser registry settings" -ForegroundColor Gray
+    }
+}
+
+Test-BrowserConfiguration
+
 # --- Data Directory Setup & Migration ---
 function Initialize-DataDirectory {
     <#
@@ -350,9 +374,42 @@ $LogHandler = {
             $url = $matches[1]
             Write-Host "[INFO] Opening browser at $url..." -ForegroundColor Green
             try {
-                Start-Process $url
+                # Try multiple methods to open browser for better compatibility
+                # Method 1: Start-Process with explicit shell execute (most reliable)
+                $browserOpened = $false
+                try {
+                    Start-Process -FilePath $url -ErrorAction Stop
+                    $browserOpened = $true
+                } catch {
+                    Write-Host "[DEBUG] Start-Process direct URL failed, trying alternative methods..." -ForegroundColor Yellow
+                }
+                
+                # Method 2: Use cmd /c start (fallback for Windows URL association issues)
+                if (-not $browserOpened) {
+                    try {
+                        Start-Process cmd -ArgumentList "/c", "start", $url -WindowStyle Hidden -ErrorAction Stop
+                        $browserOpened = $true
+                    } catch {
+                        Write-Host "[DEBUG] cmd /c start failed, trying explorer..." -ForegroundColor Yellow
+                    }
+                }
+                
+                # Method 3: Use explorer.exe (another Windows fallback)
+                if (-not $browserOpened) {
+                    try {
+                        Start-Process explorer.exe -ArgumentList $url -ErrorAction Stop
+                        $browserOpened = $true
+                    } catch {
+                        Write-Host "[DEBUG] explorer.exe method also failed." -ForegroundColor Yellow
+                    }
+                }
+                
+                if (-not $browserOpened) {
+                    Write-Host "[WARN] Could not open browser automatically. Please open manually: $url" -ForegroundColor Yellow
+                    Write-Host "[INFO] To fix this, set a default browser in Windows Settings > Apps > Default apps" -ForegroundColor Cyan
+                }
             } catch {
-                Write-Host "[WARN] Could not open browser automatically." -ForegroundColor Yellow
+                Write-Host "[WARN] Could not open browser automatically. Please open manually: $url" -ForegroundColor Yellow
             }
         }
     }

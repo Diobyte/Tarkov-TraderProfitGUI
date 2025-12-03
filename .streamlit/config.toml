@@ -5,3 +5,17 @@ backgroundColor="#0E1117"
 secondaryBackgroundColor="#262730"
 textColor="#FAFAFA"
 font="sans serif"
+
+[server]
+# Disable headless mode to allow browser opening
+headless = false
+# Bind to localhost for security
+address = "localhost"
+# Enable CORS for local development
+enableCORS = false
+# Enable XSRF protection
+enableXsrfProtection = true
+
+[browser]
+# Attempt to automatically open browser
+gatherUsageStats = false
