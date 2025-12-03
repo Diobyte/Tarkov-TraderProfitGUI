@@ -541,6 +541,7 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
             - search: Item name search string
             - category: Category filter ('All' or specific category)
             - show_negative: Whether to include negative profit items
+            - min_offers: Minimum offer count (default: 5)
     
     Returns:
         pd.DataFrame: Filtered DataFrame matching all criteria.
@@ -548,9 +549,13 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if df.empty:
         return df
     
+    # Get minimum offers from filters, default to config value
+    min_offers = filters.get('min_offers', config.VOLUME_MIN_FOR_RECOMMENDATION)
+    
     filtered = df[
         (df['profit'] >= filters['min_profit']) &
-        (df['roi'] >= filters['min_roi'])
+        (df['roi'] >= filters['min_roi']) &
+        (df['last_offer_count'] >= min_offers)  # Filter out low-volume items
     ]
     
     if filters['search']:
@@ -673,8 +678,13 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
     
     st.markdown("### 🏆 Top Opportunities")
     
-    # Get top 6 by profit
-    top = df.nlargest(6, 'profit')
+    # Filter to reliable volume items only (>= 5 offers) and get top 6 by profit
+    reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
+    if reliable_df.empty:
+        st.info("No items with sufficient market volume found.")
+        return
+    
+    top = reliable_df.nlargest(6, 'profit')
     
     cols = st.columns(3)
     for i, (_, item) in enumerate(top.iterrows()):
@@ -725,10 +735,17 @@ def render_data_table(df: pd.DataFrame) -> None:
         return
     
     st.markdown("### 🏆 Top Recommended Trades")
-    st.caption("Items with the best profit potential based on your filters.")
+    st.caption(f"Items with ≥{config.VOLUME_MIN_FOR_RECOMMENDATION} offers and best profit potential.")
+    
+    # Filter to items with reliable volume
+    reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
+    
+    if reliable_df.empty:
+        st.warning("No items with sufficient market volume. Try adjusting filters.")
+        return
     
     # Prepare display dataframe - show top recommended
-    display_df = df[[
+    display_df = reliable_df[[
         'icon_link', 'name', 'profit', 'roi', 'flea_price', 
         'trader_price', 'trader_name', 'category', 'last_offer_count'
     ]].copy()

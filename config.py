@@ -24,6 +24,14 @@ ML_ESTIMATORS: int = 100  # Number of estimators for ensemble models
 ML_MIN_ITEMS_FOR_ANALYSIS: int = 10  # Minimum items required for ML analysis
 ML_MIN_ITEMS_FOR_ANOMALY: int = 20  # Minimum items for anomaly detection
 
+# Volume/Offers Thresholds
+VOLUME_MIN_FOR_RECOMMENDATION: int = 5  # Minimum offers required to recommend
+VOLUME_LOW_THRESHOLD: int = 10  # Below this = low volume/hard to buy
+VOLUME_MEDIUM_THRESHOLD: int = 50  # Below this = medium volume
+VOLUME_HIGH_THRESHOLD: int = 100  # Above this = high volume/saturated
+VOLUME_VERY_HIGH_THRESHOLD: int = 200  # Above this = very high volume
+VOLUME_WEIGHT_IN_SCORE: float = 0.15  # Weight of volume in opportunity scoring
+
 # Flea Market Level Requirements (Based on Patch 0.15+ changes)
 CATEGORY_LOCKS: Dict[str, int] = {
     "Sniper rifle": 20,

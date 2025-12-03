@@ -154,21 +154,68 @@ class TarkovMLEngine:
                 0
             )
         
-        # --- Liquidity Metrics ---
+        # --- Liquidity & Volume Metrics ---
         if 'last_offer_count' in features.columns:
             features['last_offer_count'] = features['last_offer_count'].fillna(0)
+            
             # Log-transform for better distribution (many items have few offers)
             features['log_offers'] = np.log1p(features['last_offer_count'])
             
-            # Liquidity score (0-100)
-            features['liquidity_score'] = np.minimum(features['last_offer_count'] / 50 * 100, 100)
+            # Liquidity score (0-100) - higher is better for buying
+            # Items with < 5 offers get heavily penalized
+            features['liquidity_score'] = np.where(
+                features['last_offer_count'] < config.VOLUME_MIN_FOR_RECOMMENDATION,
+                features['last_offer_count'] * 2,  # 0-10 score for 0-5 offers
+                np.minimum(
+                    features['last_offer_count'] / config.VOLUME_MEDIUM_THRESHOLD * 100, 
+                    config.MAX_LIQUIDITY_SCORE
+                )
+            )
+            
+            # Volume tier classification
+            features['volume_tier'] = pd.cut(
+                features['last_offer_count'],
+                bins=[-1, config.VOLUME_MIN_FOR_RECOMMENDATION, config.VOLUME_LOW_THRESHOLD, 
+                      config.VOLUME_MEDIUM_THRESHOLD, config.VOLUME_HIGH_THRESHOLD, 
+                      config.VOLUME_VERY_HIGH_THRESHOLD, float('inf')],
+                labels=['Unreliable', 'Very Low', 'Low', 'Medium', 'High', 'Very High']
+            )
+            
+            # Is this item reliable enough to trade?
+            features['volume_reliable'] = features['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION
             
             # Competition indicator - high offers might mean saturated market
             features['market_saturation'] = np.where(
-                features['last_offer_count'] > 100,
-                1,
-                features['last_offer_count'] / 100
+                features['last_offer_count'] > config.VOLUME_HIGH_THRESHOLD,
+                1.0,
+                features['last_offer_count'] / config.VOLUME_HIGH_THRESHOLD
             )
+            
+            # Volume-adjusted profit - profit weighted by how easy it is to buy
+            # Items with very few offers get their profit heavily discounted
+            # This prevents 1-offer items from ranking high
+            volume_multiplier = np.where(
+                features['last_offer_count'] < config.VOLUME_MIN_FOR_RECOMMENDATION,
+                0.1,  # 90% penalty for unreliable volume
+                np.clip(features['last_offer_count'] / config.VOLUME_MEDIUM_THRESHOLD, 0.2, 2.0)
+            )
+            features['volume_adjusted_profit'] = features['profit'] * volume_multiplier
+            
+            # Profit per offer - how much profit relative to competition
+            features['profit_per_offer'] = np.where(
+                features['last_offer_count'] > 0,
+                features['profit'] / np.log1p(features['last_offer_count']),
+                features['profit']
+            )
+            
+            # Buy feasibility score - combines volume with price position
+            # High volume + low price position = easy to buy at good price
+            if 'price_position' in features.columns:
+                features['buy_feasibility'] = np.where(
+                    features['last_offer_count'] < config.VOLUME_MIN_FOR_RECOMMENDATION,
+                    10,  # Very low feasibility for unreliable items
+                    features['liquidity_score'] * 0.6 + (1 - features['price_position']) * 100 * 0.4
+                )
         
         # --- Tarkov-Specific Features ---
         # Trader accessibility (lower level = more accessible)
@@ -200,18 +247,22 @@ class TarkovMLEngine:
         
         features = self.prepare_features(df)
         
-        # Feature columns for scoring
+        # Feature columns for scoring - core metrics
         score_features = [
             'profit', 'capital_efficiency', 'profit_per_slot', 'profit_density'
         ]
         
-        # Add optional features if available
-        optional_features = [
-            'liquidity_score', 'price_position', 'momentum', 
-            'trader_accessibility', 'market_saturation'
+        # Add volume-related features if available
+        volume_features = [
+            'liquidity_score', 'volume_adjusted_profit', 'profit_per_offer', 'buy_feasibility'
         ]
         
-        for feat in optional_features:
+        # Add other optional features
+        other_features = [
+            'price_position', 'momentum', 'trader_accessibility', 'market_saturation'
+        ]
+        
+        for feat in volume_features + other_features:
             if feat in features.columns:
                 score_features.append(feat)
         
@@ -227,17 +278,20 @@ class TarkovMLEngine:
         feature_stability = 1 / (X.std() + 0.01)
         feature_stability = feature_stability / feature_stability.sum()
         
-        # Base weights (domain knowledge)
+        # Base weights (domain knowledge) - volume gets significant weight
         base_weights = {
-            'profit': 0.25,
-            'capital_efficiency': 0.20,
-            'profit_per_slot': 0.15,
-            'profit_density': 0.10,
-            'liquidity_score': 0.10,
-            'price_position': 0.05,  # Lower = better (buy low)
-            'momentum': 0.05,
-            'trader_accessibility': 0.05,
-            'market_saturation': 0.05
+            'profit': 0.20,
+            'capital_efficiency': 0.15,
+            'profit_per_slot': 0.10,
+            'profit_density': 0.08,
+            'liquidity_score': config.VOLUME_WEIGHT_IN_SCORE,  # Volume is important!
+            'volume_adjusted_profit': 0.10,
+            'profit_per_offer': 0.05,
+            'buy_feasibility': 0.05,
+            'price_position': 0.04,  # Lower = better (buy low)
+            'momentum': 0.03,
+            'trader_accessibility': 0.03,
+            'market_saturation': 0.02
         }
         
         # Combine base weights with adaptive weights
@@ -280,9 +334,14 @@ class TarkovMLEngine:
         
         features = self.prepare_features(df)
         
-        # Features that indicate unusual pricing
+        # Features that indicate unusual pricing - now including volume
         anomaly_features = ['profit', 'capital_efficiency', 'profit_per_slot']
         
+        # Volume can indicate anomalies - very high profit with low volume = suspicious
+        if 'log_offers' in features.columns:
+            anomaly_features.append('log_offers')
+        if 'volume_adjusted_profit' in features.columns:
+            anomaly_features.append('volume_adjusted_profit')
         if 'flea_premium' in features.columns:
             anomaly_features.append('flea_premium')
         if 'price_position' in features.columns:
@@ -322,7 +381,15 @@ class TarkovMLEngine:
         Returns:
             String label describing the anomaly type.
         """
-        if row.get('profit', 0) > row.get('flea_price', 1) * 0.5:
+        # Check for volume-related anomalies first
+        offers = row.get('last_offer_count', 0)
+        profit = row.get('profit', 0)
+        
+        if profit > 10000 and offers < config.VOLUME_LOW_THRESHOLD:
+            return 'High Profit Low Volume (Risky)'
+        elif profit > 5000 and offers > config.VOLUME_HIGH_THRESHOLD:
+            return 'High Profit High Volume (Opportunity!)'
+        elif row.get('profit', 0) > row.get('flea_price', 1) * 0.5:
             return 'High Profit Opportunity'
         elif row.get('capital_efficiency', 0) > 0.5:
             return 'High ROI'
@@ -355,11 +422,16 @@ class TarkovMLEngine:
         
         features = self.prepare_features(df)
         
-        # Clustering features
+        # Clustering features - including volume metrics
         cluster_features = ['profit', 'capital_efficiency', 'profit_per_slot']
         
+        # Volume features are critical for clustering trading strategies
         if 'liquidity_score' in features.columns:
             cluster_features.append('liquidity_score')
+        if 'log_offers' in features.columns:
+            cluster_features.append('log_offers')
+        if 'volume_adjusted_profit' in features.columns:
+            cluster_features.append('volume_adjusted_profit')
         if 'momentum' in features.columns:
             cluster_features.append('momentum')
         if 'price_spread_pct' in features.columns:
@@ -391,11 +463,16 @@ class TarkovMLEngine:
         features['cluster'] = kmeans.fit_predict(X_scaled)
         
         # Analyze clusters and assign meaningful labels
-        cluster_stats = features.groupby('cluster').agg({
+        agg_dict = {
             'profit': 'mean',
             'capital_efficiency': 'mean',
             'profit_per_slot': 'mean'
-        })
+        }
+        # Add volume to cluster analysis if available
+        if 'last_offer_count' in features.columns:
+            agg_dict['last_offer_count'] = 'mean'
+        
+        cluster_stats = features.groupby('cluster').agg(agg_dict)
         
         # Sort clusters by profitability
         cluster_stats['rank'] = cluster_stats['profit'].rank(ascending=False)
@@ -690,11 +767,17 @@ class TarkovMLEngine:
             features.get('liquidity_score', 50) * 0.15
         )
         
-        # Filter to accessible items within risk tolerance
+        # Filter to accessible items within risk tolerance AND sufficient volume
+        # This filters out unreliable 1-5 offer items
+        has_volume = features.get('volume_reliable', True)
+        if isinstance(has_volume, bool):
+            has_volume = pd.Series([has_volume] * len(features), index=features.index)
+        
         recommended = features[
             features['accessible'] & 
             features['within_risk'] &
-            (features['profit'] > 0)
+            (features['profit'] > 0) &
+            has_volume
         ].copy()
         
         # Add recommendation tier
