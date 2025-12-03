@@ -163,27 +163,34 @@ class ModelPersistence:
     
     def update_item_statistics(self, item_id: str, profit: float, 
                                flea_price: float, offers: int,
-                               category: str, trader: str) -> None:
+                               category: str, trader: str) -> bool:
         """
         Update running statistics for an item.
         
         Uses Welford's online algorithm for numerically stable
-        running mean and variance calculation.
+        running mean and variance calculation. This algorithm allows
+        incremental updates without storing all historical values.
         
         Args:
-            item_id: Unique item identifier
-            profit: Current profit value
-            flea_price: Current flea market price
-            offers: Number of offers
-            category: Item category
-            trader: Best trader name
+            item_id: Unique item identifier (non-empty string required).
+            profit: Current profit value.
+            flea_price: Current flea market price.
+            offers: Number of offers on flea market.
+            category: Item category name.
+            trader: Best trader name for this item.
+            
+        Returns:
+            True if statistics were updated, False if item_id was invalid.
+            
+        Note:
+            NaN/inf values are automatically sanitized to prevent corruption.
         """
         # Skip empty or invalid item IDs
         if not item_id or not isinstance(item_id, str):
-            return
+            return False
         item_id = str(item_id).strip()
         if not item_id:
-            return
+            return False
         
         # Sanitize category and trader
         category = str(category).strip() if category else 'Unknown'
@@ -261,6 +268,8 @@ class ModelPersistence:
                 stats['consistency_score'] = max(0, min(100, 100 * (1 - cv)))
             else:
                 stats['consistency_score'] = 50.0
+        
+        return True
     
     def update_category_performance(self, category: str, profit: float, 
                                     is_profitable: bool) -> None:
@@ -503,7 +512,7 @@ class ModelPersistence:
 # Singleton instance with thread-safe initialization
 import threading
 _persistence: Optional[ModelPersistence] = None
-_persistence_lock = threading.Lock()
+_persistence_lock: threading.Lock = threading.Lock()
 
 
 def get_model_persistence() -> ModelPersistence:

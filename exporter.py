@@ -35,12 +35,20 @@ class DataExporter:
     """
     Handles data export in multiple formats.
     
+    Thread-safe singleton for exporting market data, analysis results,
+    and trading recommendations. Automatically manages export directory
+    and filename generation.
+    
     Supports exporting:
-    - Current market data
-    - Analysis results
-    - Trading recommendations
+    - Current market data (CSV, JSON, Excel, Markdown)
+    - Analysis results with formatting
+    - Trading recommendations with profit formatting  
     - Historical trends
-    - Alert history
+    - Market snapshots in all formats
+    
+    Example:
+        >>> exporter = get_exporter()
+        >>> filepath = exporter.export_to_csv(df, prefix='market')
     """
     
     def __init__(self, export_dir: Optional[str] = None) -> None:
@@ -107,14 +115,17 @@ class DataExporter:
         """
         Export DataFrame to Excel file.
         
+        Requires openpyxl package for Excel support. Falls back to CSV if
+        openpyxl is not installed or if Excel export fails.
+        
         Args:
             df: DataFrame to export.
-            filename: Optional specific filename.
+            filename: Optional specific filename. Auto-generated if not provided.
             prefix: Prefix for auto-generated filename.
-            sheet_name: Name of the Excel sheet.
+            sheet_name: Name of the Excel sheet (max 31 chars, special chars replaced).
             
         Returns:
-            Path to the exported file.
+            Path to the exported file (may be CSV if Excel fails).
         """
         if filename is None:
             filename = self._generate_filename(prefix, "xlsx")
@@ -376,7 +387,7 @@ class DataExporter:
 # Singleton instance with thread-safe initialization
 import threading
 _exporter: Optional[DataExporter] = None
-_exporter_lock = threading.Lock()
+_exporter_lock: threading.Lock = threading.Lock()
 
 
 def get_exporter() -> DataExporter:

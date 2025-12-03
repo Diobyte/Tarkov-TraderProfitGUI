@@ -123,8 +123,24 @@ def retry_db_op(
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to retry database operations when locked.
 
-    If *max_retries* or *delay* are not provided, they default to values from
-    ``config.DATABASE_RETRY_ATTEMPTS`` and ``config.DATABASE_RETRY_DELAY``.
+    SQLite can raise OperationalError with 'database is locked' when multiple
+    processes/threads access the database simultaneously. This decorator
+    automatically retries the operation with exponential backoff.
+    
+    Args:
+        max_retries: Maximum number of retry attempts. Defaults to
+                    config.DATABASE_RETRY_ATTEMPTS (5).
+        delay: Delay in seconds between retries. Defaults to
+              config.DATABASE_RETRY_DELAY (1.0).
+              
+    Returns:
+        Decorated function that retries on lock errors.
+        
+    Example:
+        @retry_db_op(max_retries=3, delay=0.5)
+        def my_db_function():
+            # database operations here
+            pass
     """
 
     effective_retries = max_retries or config.DATABASE_RETRY_ATTEMPTS
@@ -154,6 +170,17 @@ def retry_db_op(
 
 @retry_db_op()
 def init_db() -> None:
+    """Initialize the database with required tables, indexes, and migrations.
+    
+    Creates the prices table if it doesn't exist and applies any necessary
+    schema migrations for backward compatibility. Enables WAL mode for
+    better concurrent read/write performance.
+    
+    This function is idempotent - safe to call multiple times.
+    
+    Raises:
+        sqlite3.Error: If database initialization fails (after retries).
+    """
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
@@ -268,7 +295,11 @@ def save_prices_batch(items: List[Tuple]) -> None:
     
     # Validate tuple length is expected
     if first_len not in (15, 25):
-        logging.warning("Unexpected item tuple length: %d. Expected 15 or 25.", first_len)
+        logging.warning(
+            "Unexpected item tuple length: %d. Expected 15 (legacy) or 25 (enhanced). "
+            "This may indicate schema mismatch.",
+            first_len
+        )
     
     conn = None
     try:
@@ -387,12 +418,20 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
 def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
     """Get the price history for a specific item.
     
+    Retrieves all historical records for an item, useful for trend analysis
+    and price charting. Results are sorted chronologically (oldest first).
+    
     Args:
-        item_id: The unique identifier for the item.
+        item_id: The unique identifier for the item (from API).
         
     Returns:
         List of tuples with (timestamp, flea_price, trader_price, profit).
-        Empty list if no history found.
+        Empty list if no history found or item doesn't exist.
+        
+    Example:
+        >>> history = get_item_history('5c0a840b86f7742ffa4f2482')
+        >>> for ts, flea, trader, profit in history:
+        ...     print(f"{ts}: profit={profit}")
     """
     conn = None
     try:
@@ -522,42 +561,52 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
 def get_latest_timestamp() -> Optional[datetime]:
     """Get the most recent timestamp from the prices table.
     
+    This is useful for determining data freshness and rate limiting.
+    
     Returns:
-        datetime object of the most recent record, or None if no data.
+        datetime object of the most recent record, or None if no data exists.
+        
+    Raises:
+        sqlite3.Error: If database connection or query fails (after retries).
     """
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
-        c = conn.cursor()
-        c.execute('SELECT MAX(timestamp) FROM prices')
-        result = c.fetchone()
+    with DatabaseConnection(readonly=True) as (conn, cursor):
+        cursor.execute('SELECT MAX(timestamp) FROM prices')
+        result = cursor.fetchone()
         
         if result and result[0]:
             return parse_timestamp(result[0])
         return None
-    finally:
-        if conn:
-            conn.close()
 
 @retry_db_op()
-def clear_all_data() -> None:
+def clear_all_data() -> int:
     """
     Delete ALL data from the prices table.
     
     Warning:
         This operation cannot be undone. Use with caution.
+        Consider backing up data before calling this function.
+        
+    Returns:
+        Number of records deleted.
+        
+    Raises:
+        sqlite3.Error: If database operation fails (after retries).
     """
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME, timeout=config.DATABASE_CONNECTION_TIMEOUT)
         c = conn.cursor()
         c.execute('DELETE FROM prices')
+        deleted = max(0, c.rowcount) if c.rowcount is not None else 0
         conn.commit()
         
         try:
             c.execute('VACUUM')
         except sqlite3.OperationalError:
             logging.warning("Could not VACUUM database (locked?), skipping.")
+        
+        logging.info("Cleared all data: %d records deleted", deleted)
+        return deleted
     finally:
         if conn:
             conn.close()

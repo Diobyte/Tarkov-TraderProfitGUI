@@ -39,24 +39,33 @@ class TarkovMLEngine:
     """
     Advanced ML engine for Tarkov market analysis.
     
-    Combines multiple ML techniques for comprehensive trading insights including:
+    Thread-safe singleton providing comprehensive ML-powered market analysis
+    for Escape from Tarkov trading. Combines multiple ML techniques for
+    optimal trading recommendations.
+    
+    Features:
     - Feature engineering for game economy metrics
-    - Opportunity scoring with adaptive weights
-    - Anomaly detection for arbitrage opportunities
-    - Item clustering for strategy grouping
-    - Profit trend prediction
-    - Risk assessment
+    - Opportunity scoring with adaptive weights  
+    - Anomaly detection for arbitrage opportunities (Isolation Forest)
+    - Item clustering for strategy grouping (K-Means)
+    - Profit trend prediction (Ridge regression)
+    - Risk assessment with multi-factor scoring
     - Historical trend learning for improved recommendations
     - Persistent model state that survives database cleanups
     
     Attributes:
         scaler: RobustScaler for handling outliers common in game economies.
-        price_predictor: Optional predictor model (reserved for future use).
-        anomaly_detector: Optional anomaly detection model.
-        item_clusterer: Optional clustering model.
+        price_predictor: Reserved for future advanced prediction models.
+        anomaly_detector: IsolationForest for detecting unusual pricing.
+        item_clusterer: KMeans for grouping similar trading opportunities.
         trend_data: Cached historical trend data for items.
         profit_stats: Global profit statistics for calibration.
         persistence: Model persistence layer for saving/loading state.
+        
+    Example:
+        >>> engine = get_ml_engine()
+        >>> df = engine.calculate_opportunity_score_ml(market_data)
+        >>> recommendations = engine.generate_trading_recommendations(df)
     """
     
     def __init__(self) -> None:
@@ -778,12 +787,23 @@ class TarkovMLEngine:
         Use Isolation Forest to detect unusual pricing patterns that may indicate
         arbitrage opportunities or data errors.
         
+        Anomalies can represent either exceptional opportunities (high profit
+        with good volume) or risky situations (high profit with very low volume).
+        The anomaly_type column helps distinguish between these cases.
+        
         Args:
             df: DataFrame with prepared features for anomaly detection.
-            contamination: Expected proportion of outliers in the dataset.
+            contamination: Expected proportion of outliers (0.0-0.5). Default
+                          is configured via ML_ANOMALY_CONTAMINATION.
             
         Returns:
-            DataFrame with is_anomaly, anomaly_score, and anomaly_type columns added.
+            DataFrame with added columns:
+                - is_anomaly: Boolean flag (1=anomaly, 0=normal)
+                - anomaly_score: Continuous score (higher=more anomalous)
+                - anomaly_type: Classification of anomaly type
+                
+        Note:
+            Requires at least ML_MIN_ITEMS_FOR_ANOMALY items for detection.
         """
         if df.empty or len(df) < config.ML_MIN_ITEMS_FOR_ANOMALY:
             df['is_anomaly'] = False
@@ -1453,7 +1473,7 @@ class TarkovMLEngine:
 # Singleton instance with thread-safe initialization
 import threading
 _ml_engine: Optional[TarkovMLEngine] = None
-_ml_engine_lock = threading.Lock()
+_ml_engine_lock: threading.Lock = threading.Lock()
 
 
 def get_ml_engine() -> TarkovMLEngine:

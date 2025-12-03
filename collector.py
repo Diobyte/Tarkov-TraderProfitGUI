@@ -331,19 +331,23 @@ def fetch_and_store_data() -> None:
         logging.info("No profitable items found or API error.")
 
 
-def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> None:
+def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
     """
     Train the ML model on the newly fetched batch of data.
     
     This allows the model to continuously learn and improve
     recommendations over time. The learned state persists even
-    after database cleanup.
+    after database cleanup via the model_persistence module.
     
     Args:
-        batch_data: List of tuples with item data.
+        batch_data: List of tuples with item data (25 columns expected).
+        
+    Returns:
+        Dict with training statistics including items_processed and profitable_count.
+        Returns empty dict with status='no_data' if batch_data is empty.
     """
     if not batch_data:
-        return
+        return {'status': 'no_data', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training
     columns = [
@@ -369,6 +373,8 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> None:
     
     logging.info("Model training: %d items, %d profitable",
                 result['items_processed'], result['profitable_count'])
+    
+    return result
 
 
 def cleanup_job() -> None:

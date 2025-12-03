@@ -122,21 +122,33 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_level: int = 0) -> int:
+def calculate_flea_market_fee(base_price: Union[int, float], sell_price: Union[int, float], intel_center_level: int = 0) -> int:
     """
     Calculate the flea market fee for listing an item.
     
+    Uses BSG's fee formula which charges more when selling above base price.
+    The Intelligence Center in hideout reduces fees by 5% per level.
+    
     Args:
-        base_price: The game's base price for the item
-        sell_price: The price you want to list at
-        intel_center_level: 0, 1, 2, or 3 (reduces fee by 0%, 5%, 10%, 15%)
+        base_price: The game's base price for the item (must be positive).
+        sell_price: The price you want to list at (must be positive).
+        intel_center_level: 0, 1, 2, or 3 (reduces fee by 0%, 5%, 10%, 15%).
     
     Returns:
-        The fee in rubles
+        The fee in rubles. Returns 0 for invalid inputs.
+        
+    Example:
+        >>> calculate_flea_market_fee(10000, 15000, intel_center_level=2)
+        750  # Approximate fee with 10% reduction
     """
     # Validate inputs - base_price must be positive for meaningful calculation
     if not isinstance(base_price, (int, float)) or not isinstance(sell_price, (int, float)):
         return 0
+    # Handle numpy/pandas types
+    if hasattr(base_price, 'item'):
+        base_price = float(base_price.item())  # type: ignore[union-attr]
+    if hasattr(sell_price, 'item'):
+        sell_price = float(sell_price.item())  # type: ignore[union-attr]
     if base_price <= 0 or sell_price <= 0:
         return 0
     
@@ -175,11 +187,22 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
 def format_roubles(value: Union[int, float, None]) -> str:
     """Format a number as roubles with thousand separators.
     
+    Handles various numeric types including numpy/pandas types, and
+    gracefully handles edge cases like None, NaN, and infinity.
+    
     Args:
-        value: Numeric value to format (int, float, or None).
+        value: Numeric value to format. Accepts int, float, numpy types,
+               pandas types, or None.
         
     Returns:
-        Formatted string with rouble symbol and thousand separators.
+        Formatted string with rouble symbol (₽) and thousand separators.
+        Returns "0 ₽" for invalid inputs.
+        
+    Example:
+        >>> format_roubles(1500000)
+        '1,500,000 ₽'
+        >>> format_roubles(None)
+        '0 ₽'
     """
     if value is None:
         return "0 ₽"

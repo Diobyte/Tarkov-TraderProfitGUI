@@ -126,12 +126,21 @@ class AlertManager:
     """
     Manages price alerts and notifications.
     
+    Thread-safe singleton manager for price alerts. Handles persistence,
+    cooldown management, and callback notifications.
+    
     Supports:
     - Custom profit threshold alerts per item
-    - Category-wide alerts
+    - Category-wide alerts  
     - Automatic high-opportunity alerts
-    - Alert history tracking
-    - Cooldown management
+    - Alert history tracking with configurable limits
+    - Cooldown management to prevent spam
+    - Callback registration for custom alert handlers
+    
+    Example:
+        >>> manager = get_alert_manager()
+        >>> manager.add_item_watchlist('item123', 'GPU', 50000)
+        >>> triggered = manager.check_alerts(market_data)
     """
     
     def __init__(self) -> None:
@@ -407,7 +416,7 @@ class AlertManager:
 # Singleton instance with thread-safe initialization
 import threading
 _alert_manager: Optional[AlertManager] = None
-_alert_manager_lock = threading.Lock()
+_alert_manager_lock: threading.Lock = threading.Lock()
 
 
 def get_alert_manager() -> AlertManager:
