@@ -526,6 +526,8 @@ class TarkovMLEngine:
             category = row.get('category', 'Unknown')
             trader = row.get('trader_name', 'Unknown')
             item_name = row.get('name', '')  # Get human-readable name
+            roi = row.get('roi', 0)  # ROI if calculated
+            liquidity = row.get('liquidity_score', 0)  # Liquidity score
             
             self.persistence.update_item_statistics(
                 item_id=item_id,
@@ -534,7 +536,9 @@ class TarkovMLEngine:
                 offers=int(offers),
                 category=category,
                 trader=trader,
-                item_name=item_name
+                item_name=item_name,
+                roi=float(roi) if roi else 0.0,
+                liquidity_score=float(liquidity) if liquidity else 0.0
             )
             
             # Update category and trader stats
@@ -546,12 +550,22 @@ class TarkovMLEngine:
             if is_profitable:
                 profitable_count += 1
         
-        # Update calibration
+        # Update calibration with outlier clipping
+        # Extreme outliers (like 49M loss items) skew the calibration
         if len(df) > 0:
-            profit_mean = df['profit'].mean()
-            profit_std = df['profit'].std() if len(df) > 1 else 1.0
-            roi_mean = df['roi'].mean() if 'roi' in df.columns else 0
-            roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1.0
+            # Clip extreme outliers using IQR method for more robust calibration
+            profit_series = df['profit']
+            q1 = profit_series.quantile(0.05)  # 5th percentile
+            q3 = profit_series.quantile(0.95)  # 95th percentile
+            clipped_profit = profit_series.clip(lower=q1, upper=q3)
+            
+            profit_mean = clipped_profit.mean()
+            profit_std = clipped_profit.std() if len(df) > 1 else 1.0
+            
+            roi_series = df['roi'] if 'roi' in df.columns else pd.Series([0])
+            roi_clipped = roi_series.clip(lower=-200, upper=200)  # Clip extreme ROI
+            roi_mean = roi_clipped.mean()
+            roi_std = roi_clipped.std() if len(df) > 1 else 1.0
             
             # Handle NaN values from empty or single-row series
             if pd.isna(profit_mean) or np.isinf(profit_mean):

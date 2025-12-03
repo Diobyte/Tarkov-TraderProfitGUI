@@ -163,7 +163,9 @@ class ModelPersistence:
     def update_item_statistics(self, item_id: str, profit: float, 
                                flea_price: float, offers: int,
                                category: str, trader: str,
-                               item_name: str = '') -> bool:
+                               item_name: str = '',
+                               roi: float = 0.0,
+                               liquidity_score: float = 0.0) -> bool:
         """
         Update running statistics for an item.
         
@@ -179,6 +181,8 @@ class ModelPersistence:
             category: Item category name.
             trader: Best trader name for this item.
             item_name: Human-readable item name for display.
+            roi: Return on investment percentage.
+            liquidity_score: Liquidity score (0-100).
             
         Returns:
             True if statistics were updated, False if item_id was invalid.
@@ -223,6 +227,10 @@ class ModelPersistence:
             flea_price = 0.0
         if not isinstance(offers, (int, float)) or (isinstance(offers, float) and (math.isnan(offers) or math.isinf(offers))):
             offers = 0
+        if not isinstance(roi, (int, float)) or math.isnan(roi) or math.isinf(roi):
+            roi = 0.0
+        if not isinstance(liquidity_score, (int, float)) or math.isnan(liquidity_score) or math.isinf(liquidity_score):
+            liquidity_score = 0.0
             
         if item_id not in self._state['item_statistics']:
             self._state['item_statistics'][item_id] = {
@@ -233,6 +241,9 @@ class ModelPersistence:
                 'profit_max': profit,  # Initialize with first profit instead of -inf
                 'flea_price_mean': 0.0,
                 'offers_mean': 0.0,
+                'roi_mean': 0.0,  # Track average ROI
+                'liquidity_mean': 0.0,  # Track average liquidity
+                'profitable_count': 0,  # Track how often item is profitable
                 'category': category,
                 'trader': trader,
                 'item_name': item_name,
@@ -272,6 +283,23 @@ class ModelPersistence:
         # Update item_name if provided (allows backfilling old data)
         if item_name:
             stats['item_name'] = item_name
+        
+        # Update ROI and liquidity running averages (initialize if missing for old data)
+        if 'roi_mean' not in stats:
+            stats['roi_mean'] = roi
+        else:
+            stats['roi_mean'] = stats['roi_mean'] + (roi - stats['roi_mean']) / n
+        
+        if 'liquidity_mean' not in stats:
+            stats['liquidity_mean'] = liquidity_score
+        else:
+            stats['liquidity_mean'] = stats['liquidity_mean'] + (liquidity_score - stats['liquidity_mean']) / n
+        
+        # Track profitable occurrences
+        if 'profitable_count' not in stats:
+            stats['profitable_count'] = 1 if profit > 0 else 0
+        elif profit > 0:
+            stats['profitable_count'] = stats.get('profitable_count', 0) + 1
         
         # Calculate consistency (low variance = high consistency)
         if n >= 2:
@@ -569,6 +597,11 @@ class ModelPersistence:
         items = []
         for item_id, stats in self._state['item_statistics'].items():
             if stats['count'] >= config.TREND_MIN_DATA_POINTS:
+                # Calculate profitable rate for this item
+                profitable_rate = 0.0
+                if stats['count'] > 0:
+                    profitable_rate = stats.get('profitable_count', 0) / stats['count'] * 100
+                
                 items.append({
                     'item_id': item_id,
                     'item_name': stats.get('item_name', item_id),  # Fallback to item_id for old data
@@ -578,6 +611,9 @@ class ModelPersistence:
                     'category': stats['category'],
                     'trader': stats['trader'],
                     'last_seen': stats['last_seen'],
+                    'roi_mean': stats.get('roi_mean', 0.0),
+                    'liquidity_mean': stats.get('liquidity_mean', 0.0),
+                    'profitable_rate': profitable_rate,
                 })
         
         # Sort by consistency-weighted profit
