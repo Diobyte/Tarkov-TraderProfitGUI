@@ -12,23 +12,17 @@ This module provides sophisticated ML algorithms for:
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple, List, Dict, Any
-from sklearn.ensemble import (
-    RandomForestRegressor, 
-    GradientBoostingRegressor,
-    IsolationForest,
-    RandomForestClassifier
-)
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.ensemble import IsolationForest
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
-from sklearn.linear_model import Ridge, ElasticNet
-from sklearn.model_selection import cross_val_score
+from sklearn.linear_model import Ridge
 import logging
-from functools import lru_cache
 from datetime import datetime, timedelta
 
 import config
+
+__all__ = ['TarkovMLEngine', 'get_ml_engine']
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -37,20 +31,45 @@ logger = logging.getLogger(__name__)
 class TarkovMLEngine:
     """
     Advanced ML engine for Tarkov market analysis.
-    Combines multiple ML techniques for comprehensive trading insights.
+    
+    Combines multiple ML techniques for comprehensive trading insights including:
+    - Feature engineering for game economy metrics
+    - Opportunity scoring with adaptive weights
+    - Anomaly detection for arbitrage opportunities
+    - Item clustering for strategy grouping
+    - Profit trend prediction
+    - Risk assessment
+    
+    Attributes:
+        scaler: RobustScaler for handling outliers common in game economies.
+        price_predictor: Optional predictor model (reserved for future use).
+        anomaly_detector: Optional anomaly detection model.
+        item_clusterer: Optional clustering model.
     """
     
-    def __init__(self):
-        self.scaler = RobustScaler()  # Robust to outliers common in game economies
-        self.price_predictor = None
-        self.anomaly_detector = None
-        self.item_clusterer = None
-        self._is_fitted = False
+    def __init__(self) -> None:
+        """Initialize the ML engine with default scalers and empty model slots."""
+        self.scaler = RobustScaler()
+        self.price_predictor: Optional[Any] = None
+        self.anomaly_detector: Optional[IsolationForest] = None
+        self.item_clusterer: Optional[KMeans] = None
+        self._is_fitted: bool = False
     
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Engineer advanced features for ML models.
-        Combines domain knowledge about Tarkov economy with statistical features.
+        
+        Combines domain knowledge about Tarkov economy with statistical features
+        to create meaningful predictors for trading analysis.
+        
+        Args:
+            df: DataFrame containing raw market data with columns like
+                profit, flea_price, trader_price, width, height, weight, etc.
+        
+        Returns:
+            DataFrame with added feature columns including profit_margin,
+            capital_efficiency, slots, profit_per_slot, density, price_spread,
+            liquidity_score, and more.
         """
         if df.empty:
             return df
@@ -294,7 +313,15 @@ class TarkovMLEngine:
         return features
     
     def _classify_anomaly(self, row: pd.Series) -> str:
-        """Classify the type of anomaly based on feature values."""
+        """
+        Classify the type of anomaly based on feature values.
+        
+        Args:
+            row: A pandas Series representing a single item's features.
+            
+        Returns:
+            String label describing the anomaly type.
+        """
         if row.get('profit', 0) > row.get('flea_price', 1) * 0.5:
             return 'High Profit Opportunity'
         elif row.get('capital_efficiency', 0) > 0.5:
@@ -308,8 +335,17 @@ class TarkovMLEngine:
     
     def cluster_items(self, df: pd.DataFrame, n_clusters: int = 5) -> pd.DataFrame:
         """
-        Cluster items into trading strategy groups using K-Means with 
-        automatic optimal cluster detection.
+        Cluster items into trading strategy groups using K-Means.
+        
+        Uses automatic optimal cluster detection via the elbow method
+        to find meaningful groupings of items based on trading characteristics.
+        
+        Args:
+            df: DataFrame with prepared features for clustering.
+            n_clusters: Maximum number of clusters to create.
+            
+        Returns:
+            DataFrame with cluster, cluster_label, and cluster_confidence columns added.
         """
         if df.empty or len(df) < n_clusters:
             df['cluster'] = 0
@@ -413,7 +449,18 @@ class TarkovMLEngine:
     def find_similar_items(self, df: pd.DataFrame, item_id: str, n_neighbors: int = 5) -> pd.DataFrame:
         """
         Find items with similar trading characteristics to a given item.
-        Useful for finding alternative trading opportunities.
+        
+        Uses k-nearest neighbors on normalized feature space to identify
+        items with comparable profit potential and characteristics.
+        
+        Args:
+            df: DataFrame containing all items for comparison.
+            item_id: The ID of the target item to find similar items for.
+            n_neighbors: Number of similar items to return.
+            
+        Returns:
+            DataFrame of similar items with similarity_score column added.
+            Returns empty DataFrame if item_id not found.
         """
         if df.empty or item_id not in df['item_id'].values:
             return pd.DataFrame()
@@ -458,9 +505,23 @@ class TarkovMLEngine:
                             periods_ahead: int = 12) -> Dict[str, Any]:
         """
         Predict future profit trends using time-series analysis.
-        Returns predictions and confidence intervals.
+        
+        Uses Ridge regression for linear projection with moving average
+        smoothing to detect trends and forecast future values.
+        
+        Args:
+            history_df: DataFrame with timestamp and profit columns.
+            periods_ahead: Number of future periods to predict.
+            
+        Returns:
+            Dict containing:
+                - predictions: List of predicted profit values
+                - confidence: 0-100 confidence score based on model fit
+                - trend: 'increasing', 'decreasing', or 'stable'
+                - recent_avg: Average profit of last 5 periods
+                - volatility: Normalized standard deviation of profits
         """
-        if history_df.empty or len(history_df) < 10:
+        if history_df.empty or len(history_df) < config.ML_MIN_ITEMS_FOR_ANALYSIS:
             return {'predictions': [], 'confidence': 0, 'trend': 'unknown', 'recent_avg': 0, 'volatility': 0}
         
         # Ensure sorted by timestamp
@@ -510,7 +571,16 @@ class TarkovMLEngine:
     def calculate_risk_score(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate comprehensive risk score for each item.
-        Higher risk = more volatile/uncertain profit potential.
+        
+        Risk is computed from multiple factors including price volatility,
+        liquidity, momentum, profit margins, and trader accessibility.
+        Higher risk indicates more volatile/uncertain profit potential.
+        
+        Args:
+            df: DataFrame with prepared features for risk calculation.
+            
+        Returns:
+            DataFrame with risk_score (0-100) and risk_level ('Low', 'Medium', 'High') columns.
         """
         if df.empty:
             df['risk_score'] = 50
@@ -574,6 +644,19 @@ class TarkovMLEngine:
                                          risk_tolerance: str = 'medium') -> pd.DataFrame:
         """
         Generate personalized trading recommendations based on player profile.
+        
+        Applies all analysis methods and filters results based on player's
+        level, available capital, and risk tolerance preferences.
+        
+        Args:
+            df: DataFrame with market data for analysis.
+            player_level: Player's current level (affects flea market access at 15).
+            capital: Available roubles for trading.
+            risk_tolerance: 'low', 'medium', or 'high' risk preference.
+            
+        Returns:
+            DataFrame of recommended items sorted by recommendation score,
+            with columns for max_units, potential_profit, rec_score, and rec_tier.
         """
         if df.empty:
             return df
