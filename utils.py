@@ -275,18 +275,24 @@ def calculate_flea_market_fee(
             # Selling above base price
             q = 1.0
             ratio = vr / vo  # Safe: vo > 0 checked above
-            # Cap the exponent to prevent overflow
-            exponent = min(q * (ratio - 1), 10)
-            fee = vo * 0.05 * (4 ** exponent)
+            # Cap the exponent to prevent overflow (4^10 = 1,048,576)
+            exponent = min(q * (ratio - 1), 10.0)
+            # Additional safety check for very large exponents
+            if exponent < 0:
+                exponent = 0.0
+            fee = vo * 0.05 * (4.0 ** exponent)
         else:
             # Selling below base price
             fee = vo * 0.05
         
-        # Ensure fee doesn't exceed reasonable bounds
-        return int(min(fee * modifier, 2_000_000_000))  # Cap at 2B rubles
-    except (OverflowError, ValueError, ZeroDivisionError):
+        # Ensure fee is finite and doesn't exceed reasonable bounds
+        if not np.isfinite(fee):
+            fee = vo * 0.05
+        
+        return int(min(max(fee * modifier, 0), 2_000_000_000))  # Cap at 2B rubles, ensure non-negative
+    except (OverflowError, ValueError, ZeroDivisionError, FloatingPointError):
         # Handle extreme values gracefully
-        return int(vo * 0.05 * modifier)
+        return int(max(vo * 0.05 * modifier, 0))
 
 
 def format_roubles(value: Union[int, float, None]) -> str:

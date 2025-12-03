@@ -372,8 +372,17 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
         return {'status': 'no_data', 'items_processed': 0, 'profitable_count': 0}
     
     # Validate batch_data structure
-    if not isinstance(batch_data, list) or not all(isinstance(item, (tuple, list)) for item in batch_data):
-        logging.warning("train_model_on_batch received invalid data structure")
+    if not isinstance(batch_data, list):
+        logging.warning("train_model_on_batch received non-list data: %s", type(batch_data))
+        return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
+    
+    if not all(isinstance(item, (tuple, list)) for item in batch_data):
+        logging.warning("train_model_on_batch received invalid item types in batch")
+        return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
+    
+    # Check for minimum column count
+    if batch_data and len(batch_data[0]) < 15:
+        logging.warning("train_model_on_batch received data with insufficient columns: %d", len(batch_data[0]))
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training

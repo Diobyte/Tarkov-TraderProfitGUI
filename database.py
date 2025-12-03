@@ -473,11 +473,11 @@ def get_item_history(item_id: str) -> List[Tuple[Any, ...]]:
         >>> for ts, flea, trader, profit in history:
         ...     print(f"{ts}: profit={profit}")
     """
-    # Validate item_id
-    if not item_id or not isinstance(item_id, str):
+    # Validate item_id - must be non-empty string
+    if item_id is None or not isinstance(item_id, str):
         return []
     item_id = item_id.strip()
-    if not item_id:
+    if not item_id or item_id.isspace():
         return []
     
     conn = None
@@ -907,6 +907,9 @@ def get_database_health() -> Dict[str, Any]:
     except sqlite3.Error as e:
         health['status'] = 'error'
         health['errors'].append(f"Database error: {e}")
+    except Exception as e:
+        health['status'] = 'error'
+        health['errors'].append(f"Unexpected error: {e}")
     
     # Determine health status
     if health['errors']:

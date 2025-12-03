@@ -250,8 +250,17 @@ class ModelPersistence:
         
         # Update other stats
         stats['count'] = n
-        stats['profit_min'] = min(stats['profit_min'], profit)
-        stats['profit_max'] = max(stats['profit_max'], profit)
+        # Use safe min/max to handle potential inf values from initialization
+        current_min = stats['profit_min']
+        current_max = stats['profit_max']
+        if math.isinf(current_min) or math.isnan(current_min):
+            stats['profit_min'] = profit
+        else:
+            stats['profit_min'] = min(current_min, profit)
+        if math.isinf(current_max) or math.isnan(current_max):
+            stats['profit_max'] = profit
+        else:
+            stats['profit_max'] = max(current_max, profit)
         stats['flea_price_mean'] = stats['flea_price_mean'] + (flea_price - stats['flea_price_mean']) / n
         stats['offers_mean'] = stats['offers_mean'] + (offers - stats['offers_mean']) / n
         stats['last_seen'] = datetime.now().isoformat()
@@ -610,11 +619,22 @@ _persistence_lock: threading.Lock = threading.Lock()
 
 
 def get_model_persistence() -> ModelPersistence:
-    """Get or create the model persistence singleton (thread-safe)."""
+    """Get or create the model persistence singleton (thread-safe).
+    
+    Returns:
+        The singleton ModelPersistence instance.
+        
+    Raises:
+        RuntimeError: If model persistence initialization fails.
+    """
     global _persistence
     if _persistence is None:
         with _persistence_lock:
             # Double-check locking pattern
             if _persistence is None:
-                _persistence = ModelPersistence()
+                try:
+                    _persistence = ModelPersistence()
+                except Exception as e:
+                    logger.error("Failed to initialize model persistence: %s", e)
+                    raise RuntimeError(f"Model persistence initialization failed: {e}") from e
     return _persistence

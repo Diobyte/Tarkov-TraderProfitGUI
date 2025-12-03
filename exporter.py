@@ -424,11 +424,22 @@ _exporter_lock: threading.Lock = threading.Lock()
 
 
 def get_exporter() -> DataExporter:
-    """Get or create the data exporter singleton (thread-safe)."""
+    """Get or create the data exporter singleton (thread-safe).
+    
+    Returns:
+        The singleton DataExporter instance.
+        
+    Raises:
+        RuntimeError: If exporter initialization fails.
+    """
     global _exporter
     if _exporter is None:
         with _exporter_lock:
             # Double-check locking pattern
             if _exporter is None:
-                _exporter = DataExporter()
+                try:
+                    _exporter = DataExporter()
+                except Exception as e:
+                    logger.error("Failed to initialize exporter: %s", e)
+                    raise RuntimeError(f"Exporter initialization failed: {e}") from e
     return _exporter

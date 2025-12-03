@@ -13,6 +13,8 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from tempfile import NamedTemporaryFile
 
+import numpy as np
+
 import config
 
 __all__ = [
@@ -326,11 +328,28 @@ class AlertManager:
             # Skip invalid items
             if not isinstance(item, dict):
                 continue
-            item_id = item.get('item_id', '')
-            profit = item.get('profit', 0) or 0  # Handle None
-            roi = item.get('roi', 0) or 0  # Handle None
-            offers = item.get('last_offer_count', 0) or 0  # Handle None
-            is_anomaly = item.get('is_anomaly', False)
+            item_id = str(item.get('item_id', '')).strip() if item.get('item_id') else ''
+            # Safely extract numeric values, handling None, NaN, and invalid types
+            try:
+                profit_raw = item.get('profit', 0)
+                profit = float(profit_raw) if profit_raw is not None else 0.0
+                if not np.isfinite(profit):
+                    profit = 0.0
+            except (ValueError, TypeError):
+                profit = 0.0
+            try:
+                roi_raw = item.get('roi', 0)
+                roi = float(roi_raw) if roi_raw is not None else 0.0
+                if not np.isfinite(roi):
+                    roi = 0.0
+            except (ValueError, TypeError):
+                roi = 0.0
+            try:
+                offers_raw = item.get('last_offer_count', 0)
+                offers = int(offers_raw) if offers_raw is not None else 0
+            except (ValueError, TypeError):
+                offers = 0
+            is_anomaly = bool(item.get('is_anomaly', False))
             
             for alert in self._alerts.values():
                 if not alert.can_trigger():
@@ -439,11 +458,22 @@ _alert_manager_lock: threading.Lock = threading.Lock()
 
 
 def get_alert_manager() -> AlertManager:
-    """Get or create the alert manager singleton (thread-safe)."""
+    """Get or create the alert manager singleton (thread-safe).
+    
+    Returns:
+        The singleton AlertManager instance.
+        
+    Raises:
+        RuntimeError: If alert manager initialization fails.
+    """
     global _alert_manager
     if _alert_manager is None:
         with _alert_manager_lock:
             # Double-check locking pattern
             if _alert_manager is None:
-                _alert_manager = AlertManager()
+                try:
+                    _alert_manager = AlertManager()
+                except Exception as e:
+                    logger.error("Failed to initialize alert manager: %s", e)
+                    raise RuntimeError(f"Alert manager initialization failed: {e}") from e
     return _alert_manager

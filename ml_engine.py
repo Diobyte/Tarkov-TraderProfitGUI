@@ -1061,8 +1061,9 @@ class TarkovMLEngine:
         # Handle NaN/inf in scaled features
         X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
         
-        # Find neighbors
-        nn = NearestNeighbors(n_neighbors=min(n_neighbors + 1, len(df)))
+        # Find neighbors - ensure at least 1 neighbor and don't exceed dataset size
+        actual_neighbors = max(1, min(n_neighbors + 1, len(df)))
+        nn = NearestNeighbors(n_neighbors=actual_neighbors)
         nn.fit(X_scaled)
         
         # Get index of target item
@@ -1504,11 +1505,22 @@ _ml_engine_lock: threading.Lock = threading.Lock()
 
 
 def get_ml_engine() -> TarkovMLEngine:
-    """Get or create the ML engine singleton (thread-safe)."""
+    """Get or create the ML engine singleton (thread-safe).
+    
+    Returns:
+        The singleton TarkovMLEngine instance.
+        
+    Raises:
+        RuntimeError: If ML engine initialization fails.
+    """
     global _ml_engine
     if _ml_engine is None:
         with _ml_engine_lock:
             # Double-check locking pattern
             if _ml_engine is None:
-                _ml_engine = TarkovMLEngine()
+                try:
+                    _ml_engine = TarkovMLEngine()
+                except Exception as e:
+                    logger.error("Failed to initialize ML engine: %s", e)
+                    raise RuntimeError(f"ML engine initialization failed: {e}") from e
     return _ml_engine
