@@ -63,6 +63,9 @@ class DatabaseConnection:
         """Open database connection."""
         try:
             if self.readonly:
+                # Check if database file exists before opening in read-only mode
+                if not os.path.exists(DB_NAME):
+                    raise sqlite3.OperationalError(f"Database file does not exist: {DB_NAME}")
                 # Read-only connection via URI
                 uri = f"file:{DB_NAME}?mode=ro"
                 self.conn = sqlite3.connect(uri, timeout=self.timeout, uri=True)
@@ -626,11 +629,16 @@ def get_latest_timestamp() -> Optional[datetime]:
     This is useful for determining data freshness and rate limiting.
     
     Returns:
-        datetime object of the most recent record, or None if no data exists.
+        datetime object of the most recent record, or None if no data exists
+        or database doesn't exist yet.
         
     Raises:
         sqlite3.Error: If database connection or query fails (after retries).
     """
+    # Return None if database doesn't exist yet
+    if not os.path.exists(DB_NAME):
+        return None
+    
     with DatabaseConnection(readonly=True) as (conn, cursor):
         cursor.execute('SELECT MAX(timestamp) FROM prices')
         result = cursor.fetchone()

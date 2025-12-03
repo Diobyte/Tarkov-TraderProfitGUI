@@ -421,7 +421,7 @@ ITEM_LOCKS: Dict[str, int] = {
 }
 
 # Default flea market unlock level
-FLEA_MARKET_UNLOCK_LEVEL: int = 15
+FLEA_MARKET_UNLOCK_LEVEL: Final[int] = 15
 
 # Alert Configuration
 ALERT_DEFAULT_COOLDOWN_MINUTES: int = _get_env_int('ALERT_DEFAULT_COOLDOWN_MINUTES', 30)
