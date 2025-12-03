@@ -179,6 +179,9 @@ def fetch_and_store_data() -> None:
             category {
                 name
             }
+            handbookCategories {
+                name
+            }
             sellFor {
                 price
                 source
@@ -249,12 +252,12 @@ def fetch_and_store_data() -> None:
         if not isinstance(item, dict):
             continue
             
-        # Filter out items explicitly marked as noFlea
+        # Capture item type flags for analysis (don't filter, just flag)
         types = item.get('types', []) or []
         if not isinstance(types, list):
             types = []
-        if 'noFlea' in types:
-            continue
+        no_flea = 1 if 'noFlea' in types else 0
+        marked_only = 1 if 'markedOnly' in types else 0
 
         item_id = item.get('id', '')
         if not item_id:
@@ -277,6 +280,14 @@ def fetch_and_store_data() -> None:
         category = 'Unknown'
         if category_data and isinstance(category_data, dict):
             category = category_data.get('name', 'Unknown') or 'Unknown'
+        
+        # Extract handbook categories (used for flea level matching with alternate names)
+        handbook_categories = []
+        handbook_data = item.get('handbookCategories') or []
+        if isinstance(handbook_data, list):
+            for hc in handbook_data:
+                if isinstance(hc, dict) and hc.get('name'):
+                    handbook_categories.append(hc.get('name'))
         
         # Find best Trader Sell Price (We sell to Trader)
         best_trader_price = 0
@@ -330,9 +341,10 @@ def fetch_and_store_data() -> None:
             liquidity_score = min(safe_offer_count / 50.0, 1.0) * 100 if safe_offer_count else 0
             
             # Calculate flea market level requirement based on Patch 1.0 restrictions
-            flea_level_required = get_flea_level_requirement(name, category)
+            # Pass handbook_categories for alternate naming (e.g., "Energy elements" for "Battery")
+            flea_level_required = get_flea_level_requirement(name, category, handbook_categories)
             
-            # Add to batch - now with enhanced data (26 columns for v3 format)
+            # Add to batch - now with enhanced data (28 columns for v4 format)
             batch_data.append((
                 item_id, name, current_time, best_flea_price, best_trader_price, 
                 best_trader_name, profit, icon_link, width, height, 
@@ -340,7 +352,7 @@ def fetch_and_store_data() -> None:
                 # Enhanced fields
                 base_price, high_24h_price, last_offer_count, short_name, wiki_link,
                 trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score,
-                updated
+                updated, no_flea, marked_only
             ))
             
     if batch_data:
@@ -393,14 +405,14 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
         
     # Convert batch data to DataFrame for training
-    # v3 format includes flea_level_required (26 columns)
+    # v4 format includes flea_level_required, no_flea, marked_only (28 columns)
     columns = [
         'item_id', 'name', 'timestamp', 'flea_price', 'trader_price',
         'trader_name', 'profit', 'icon_link', 'width', 'height',
         'avg_24h_price', 'low_24h_price', 'change_last_48h', 'weight', 'category',
         'base_price', 'high_24h_price', 'last_offer_count', 'short_name', 'wiki_link',
         'trader_level_required', 'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score',
-        'api_updated'
+        'api_updated', 'no_flea', 'marked_only'
     ]
     
     df = pd.DataFrame(batch_data, columns=columns)

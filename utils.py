@@ -19,7 +19,11 @@ __all__: List[str] = [
 ]
 
 
-def get_flea_level_requirement(item_name: str, category: str) -> int:
+def get_flea_level_requirement(
+    item_name: str, 
+    category: str, 
+    handbook_categories: Optional[List[str]] = None
+) -> int:
     """
     Get the minimum player level required to access an item on the Flea Market.
     
@@ -28,7 +32,9 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
     
     Args:
         item_name: The name of the item to check.
-        category: The item's category.
+        category: The item's API category.
+        handbook_categories: Optional list of handbook category names for the item.
+                           These provide alternate naming (e.g., "Energy elements" vs "Battery").
         
     Returns:
         Minimum player level required (15-40 range typically).
@@ -40,12 +46,16 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
         20
         >>> get_flea_level_requirement("Bandage", "Medical")
         15
+        >>> get_flea_level_requirement("Battery", "Battery", ["Energy elements"])
+        20
     """
     # Handle None/empty inputs gracefully
     if not item_name:
         item_name = ""
     if not category:
         category = ""
+    if handbook_categories is None:
+        handbook_categories = []
     
     item_name_lower = item_name.lower()
     
@@ -73,7 +83,7 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
             if re.search(pattern, item_name_lower):
                 return level
     
-    # Check category lock
+    # Check category lock (API category)
     # Try exact match first (case-sensitive)
     if category in config.CATEGORY_LOCKS:
         return config.CATEGORY_LOCKS[category]
@@ -83,6 +93,16 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
     for locked_cat, level in config.CATEGORY_LOCKS.items():
         if locked_cat.lower() == category_lower:
             return level
+    
+    # Check handbook categories (alternate naming like "Energy elements" for "Battery")
+    for hb_cat in handbook_categories:
+        if hb_cat in config.CATEGORY_LOCKS:
+            return config.CATEGORY_LOCKS[hb_cat]
+        # Try case-insensitive
+        hb_cat_lower = hb_cat.lower()
+        for locked_cat, level in config.CATEGORY_LOCKS.items():
+            if locked_cat.lower() == hb_cat_lower:
+                return level
     
     # Try plural/singular variations only (e.g., "Medical supply" vs "Medical supplies")
     # This is more strict than full substring matching

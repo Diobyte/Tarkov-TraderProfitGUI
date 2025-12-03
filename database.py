@@ -235,7 +235,9 @@ def init_db() -> None:
                 flea_level_required INTEGER DEFAULT 15,
                 price_velocity REAL,
                 liquidity_score REAL,
-                api_updated TEXT
+                api_updated TEXT,
+                no_flea INTEGER DEFAULT 0,
+                marked_only INTEGER DEFAULT 0
             )
         ''')
     
@@ -283,6 +285,13 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             c.execute('ALTER TABLE prices ADD COLUMN flea_level_required INTEGER DEFAULT 15')
         
+        # Check if no_flea column exists (v4 migration for item type flags)
+        try:
+            c.execute('SELECT no_flea FROM prices LIMIT 1')
+        except sqlite3.OperationalError:
+            c.execute('ALTER TABLE prices ADD COLUMN no_flea INTEGER DEFAULT 0')
+            c.execute('ALTER TABLE prices ADD COLUMN marked_only INTEGER DEFAULT 0')
+        
         # Update flea_level_required based on current CATEGORY_LOCKS config
         # This ensures database stays in sync when config is updated
         for category, level in config.CATEGORY_LOCKS.items():
@@ -316,7 +325,7 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
     Save a list of items to the database in a single transaction.
     
     Args:
-        items: List of tuples matching the database schema (15, 25, or 26 columns).
+        items: List of tuples matching the database schema (15, 25, 26, or 28 columns).
         
     Raises:
         ValueError: If items list contains tuples of inconsistent lengths.
@@ -334,9 +343,9 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
         raise ValueError("All items must have the same number of columns")
     
     # Validate tuple length is expected
-    if first_len not in (15, 25, 26):
+    if first_len not in (15, 25, 26, 28):
         logging.warning(
-            "Unexpected item tuple length: %d. Expected 15 (legacy), 25 (v2), or 26 (v3 with flea level). "
+            "Unexpected item tuple length: %d. Expected 15 (legacy), 25 (v2), 26 (v3), or 28 (v4). "
             "This may indicate schema mismatch.",
             first_len
         )
@@ -347,11 +356,12 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
         c = conn.cursor()
         
         # Prepare the data for executemany
-        # Expected tuple (26 columns): 
+        # Expected tuple (28 columns for v4 format): 
         # (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
         #  avg_24h_price, low_24h_price, change_last_48h, weight, category,
         #  base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-        #  trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated)
+        #  trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated,
+        #  no_flea, marked_only)
         
         # Convert datetime objects to string to ensure consistency
         processed_items = []
@@ -362,7 +372,7 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
                 item_list[2] = item_list[2].isoformat()
             processed_items.append(tuple(item_list))
 
-        # Handle legacy format (15 columns), v2 format (25 columns), and v3 format (26 columns)
+        # Handle legacy format (15 columns), v2 format (25 columns), v3 format (26 columns), and v4 format (28 columns)
         if len(processed_items[0]) == 15:
             # Old format - backward compatibility
             c.executemany('''
@@ -378,7 +388,7 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
                     trader_level_required, trader_task_unlock, price_velocity, liquidity_score, api_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', processed_items)
-        else:
+        elif len(processed_items[0]) == 26:
             # v3 format with flea_level_required
             c.executemany('''
                 INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
@@ -386,6 +396,16 @@ def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
                     base_price, high_24h_price, last_offer_count, short_name, wiki_link,
                     trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', processed_items)
+        else:
+            # v4 format with no_flea and marked_only flags
+            c.executemany('''
+                INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
+                    avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                    base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                    trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score, api_updated,
+                    no_flea, marked_only)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', processed_items)
         
         conn.commit()
@@ -428,7 +448,8 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
                 SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
                     avg_24h_price, low_24h_price, change_last_48h, weight, category,
                     base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-                    trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score
+                    trader_level_required, trader_task_unlock, flea_level_required, price_velocity, liquidity_score,
+                    no_flea, marked_only
                 FROM prices
                 WHERE timestamp = ?
                 ORDER BY profit DESC
@@ -447,7 +468,8 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
                 p.timestamp, p.icon_link, p.width, p.height, p.avg_24h_price, 
                 p.low_24h_price, p.change_last_48h, p.weight, p.category,
                 p.base_price, p.high_24h_price, p.last_offer_count, p.short_name, p.wiki_link,
-                p.trader_level_required, p.trader_task_unlock, p.flea_level_required, p.price_velocity, p.liquidity_score
+                p.trader_level_required, p.trader_task_unlock, p.flea_level_required, p.price_velocity, p.liquidity_score,
+                p.no_flea, p.marked_only
             FROM prices p
             INNER JOIN (
                 SELECT item_id, MAX(timestamp) as max_ts

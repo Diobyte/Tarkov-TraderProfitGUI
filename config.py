@@ -286,6 +286,9 @@ CATEGORY_LOCKS: Dict[str, int] = {
     "Special scope": 25,  # Special purpose sights (thermals, NV scopes)
     "Sights": 25,  # General sights category
     "Ironsight": 25,  # Iron sights
+    "Night Vision": 25,  # API category for NV devices
+    "Thermal Vision": 25,  # API category for thermal devices
+    "Special purpose sights": 25,  # Handbook category for NV/thermals
     
     # === AMMO ===
     "Ammo pack": 25,
@@ -296,6 +299,7 @@ CATEGORY_LOCKS: Dict[str, int] = {
     "Backpack": 25,
     "Headwear": 20,
     "Eyewear": 20,
+    "Vis. observ. device": 20,  # API category for eyewear/glasses
     "Face Cover": 20,  # Eyewear-like, API category
     "Armor component": 30,
     "Gear component": 30,
@@ -325,6 +329,8 @@ CATEGORY_LOCKS: Dict[str, int] = {
     "Valuable": 30,
     "Valuables": 30,
     "Jewelry": 30,  # Valuables category in API
+    "Money": 30,  # API category (GP coins, etc.)
+    "Tool": 30,  # API category (some tools are valuables like firesteel)
     "Other": 25,
     
     # === MEDICAL ===

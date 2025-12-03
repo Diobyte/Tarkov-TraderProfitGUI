@@ -552,10 +552,11 @@ def load_data() -> pd.DataFrame:
             'timestamp', 'icon_link', 'width', 'height', 'avg_24h_price', 'low_24h_price',
             'change_last_48h', 'weight', 'category', 'base_price', 'high_24h_price',
             'last_offer_count', 'short_name', 'wiki_link', 'trader_level_required',
-            'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score'
+            'trader_task_unlock', 'flea_level_required', 'price_velocity', 'liquidity_score',
+            'no_flea', 'marked_only'
         ]
         
-        # Handle old/new data formats (15, 24, 25, or 26 columns)
+        # Handle old/new data formats (15, 24, 25, 26, or 27 columns)
         if len(data[0]) == 15:
             df = pd.DataFrame(data, columns=columns[:15])
             for col in columns[15:]:
@@ -565,6 +566,8 @@ def load_data() -> pd.DataFrame:
                     df[col] = ''
                 elif col == 'flea_level_required':
                     df[col] = config.FLEA_MARKET_UNLOCK_LEVEL  # Default to 15
+                elif col in ('no_flea', 'marked_only'):
+                    df[col] = 0  # Default to not restricted
                 else:
                     df[col] = 0
         elif len(data[0]) >= 24:
@@ -583,6 +586,8 @@ def load_data() -> pd.DataFrame:
                         lambda row: utils.get_flea_level_requirement(row['name'], row['category']),
                         axis=1
                     )
+                elif col in ('no_flea', 'marked_only'):
+                    df[col] = 0  # Default to not restricted
                 else:
                     df[col] = 0
         else:
@@ -621,6 +626,8 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
             - min_profit_per_slot: Minimum profit per inventory slot (int)
             - max_trader_level: Maximum allowed trader level (int or None)
             - player_level: Player's current level for flea market access (default: 15)
+            - hide_no_flea: Whether to hide items banned from flea market (bool)
+            - hide_marked_only: Whether to hide marked-room-only items (bool)
     
     Returns:
         pd.DataFrame: Filtered DataFrame matching all criteria.
@@ -643,6 +650,8 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     min_profit_per_slot = filters.get('min_profit_per_slot', 0)
     max_trader_level = filters.get('max_trader_level', None)
     player_level = filters.get('player_level', None)
+    hide_no_flea = filters.get('hide_no_flea', True)
+    hide_marked_only = filters.get('hide_marked_only', False)
     
     # Ensure profit_per_slot column exists
     if 'profit_per_slot' not in df.columns:
@@ -651,6 +660,12 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     # Ensure flea_level_required column exists
     if 'flea_level_required' not in df.columns:
         df['flea_level_required'] = config.FLEA_MARKET_UNLOCK_LEVEL
+    
+    # Ensure no_flea and marked_only columns exist
+    if 'no_flea' not in df.columns:
+        df['no_flea'] = 0
+    if 'marked_only' not in df.columns:
+        df['marked_only'] = 0
     
     filtered = df[
         (df['profit'] >= filters['min_profit']) &
@@ -671,6 +686,13 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     # Filter by player level for flea market access (Patch 1.0 restrictions)
     if player_level is not None and 'flea_level_required' in filtered.columns:
         filtered = filtered[filtered['flea_level_required'] <= player_level]
+    
+    # Filter by item type flags (noFlea, markedOnly)
+    if hide_no_flea and 'no_flea' in filtered.columns:
+        filtered = filtered[filtered['no_flea'] == 0]
+    
+    if hide_marked_only and 'marked_only' in filtered.columns:
+        filtered = filtered[filtered['marked_only'] == 0]
     
     if not filters['show_negative']:
         filtered = filtered[filtered['profit'] > 0]
@@ -2495,6 +2517,19 @@ def render_sidebar() -> dict:
         
         show_negative = st.checkbox("Show Negative Profit", value=False)
         
+        # Item type filters
+        st.markdown("### 🏷️ Item Type Filters")
+        hide_no_flea = st.checkbox(
+            "Hide No-Flea Items", 
+            value=True,
+            help="Hide items that cannot be sold on the flea market (banned items)"
+        )
+        hide_marked_only = st.checkbox(
+            "Hide Marked-Only Items", 
+            value=False,
+            help="Hide items only found in marked rooms (THICC cases, etc.)"
+        )
+        
         st.markdown("---")
         
         # Quick actions
@@ -2530,7 +2565,9 @@ def render_sidebar() -> dict:
             'category': category,
             'search': search,
             'show_negative': show_negative,
-            'player_level': player_level
+            'player_level': player_level,
+            'hide_no_flea': hide_no_flea,
+            'hide_marked_only': hide_marked_only
         }
 
 # =============================================================================
