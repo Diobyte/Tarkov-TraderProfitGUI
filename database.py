@@ -30,7 +30,8 @@ def retry_db_op(max_retries: int = 5, delay: float = 1.0):
                 except Exception as e:
                     logging.error(f"Unexpected error in {func.__name__}: {e}")
                     raise e
-            return None # Should not be reached if raise e is working
+            # This return should never be reached due to the raise above
+            return None  # pragma: no cover
         return wrapper
     return decorator
 

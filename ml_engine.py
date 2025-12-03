@@ -354,11 +354,27 @@ class TarkovMLEngine:
             if cluster_id not in cluster_stats.index:
                 return '📊 Standard'
             stats = cluster_stats.loc[cluster_id]
-            # Handle both scalar and Series cases
-            rank_val = stats['rank']
-            profit_val = stats['profit']
-            rank = int(rank_val.iloc[0]) if hasattr(rank_val, 'iloc') else int(rank_val)
-            profit = float(profit_val.iloc[0]) if hasattr(profit_val, 'iloc') else float(profit_val)
+            # Safely extract scalar values from potentially Series objects
+            try:
+                rank_val = stats['rank']
+                profit_val = stats['profit']
+                # Convert to numpy scalar first if needed, then to Python int/float
+                if hasattr(rank_val, 'iloc'):
+                    rank = int(rank_val.iloc[0])  # type: ignore[union-attr]
+                elif hasattr(rank_val, 'item'):
+                    rank = int(rank_val.item())  # type: ignore[union-attr]
+                else:
+                    rank = int(rank_val)  # type: ignore[arg-type]
+                    
+                if hasattr(profit_val, 'iloc'):
+                    profit = float(profit_val.iloc[0])  # type: ignore[union-attr]
+                elif hasattr(profit_val, 'item'):
+                    profit = float(profit_val.item())  # type: ignore[union-attr]
+                else:
+                    profit = float(profit_val)  # type: ignore[arg-type]
+            except (ValueError, AttributeError, TypeError):
+                rank = 999
+                profit = 0.0
             
             if rank == 1:
                 return '🥇 Elite Opportunities'

@@ -469,9 +469,14 @@ st.markdown("""
 # =============================================================================
 # DATA LOADING
 # =============================================================================
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=60)
 def load_data() -> pd.DataFrame:
-    """Load and process market data."""
+    """Load and process market data from the database.
+    
+    Returns:
+        pd.DataFrame: DataFrame containing processed market data with calculated metrics.
+                     Returns empty DataFrame if no data available.
+    """
     try:
         data = database.get_latest_prices()
         if not data:
@@ -517,7 +522,20 @@ def load_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
-    """Apply filters to the dataframe."""
+    """Apply user-defined filters to the market dataframe.
+    
+    Args:
+        df: The source DataFrame containing market data.
+        filters: Dictionary containing filter criteria:
+            - min_profit: Minimum profit threshold
+            - min_roi: Minimum ROI percentage
+            - search: Item name search string
+            - category: Category filter ('All' or specific category)
+            - show_negative: Whether to include negative profit items
+    
+    Returns:
+        pd.DataFrame: Filtered DataFrame matching all criteria.
+    """
     if df.empty:
         return df
     
@@ -540,8 +558,8 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
 # =============================================================================
 # HEADER COMPONENT
 # =============================================================================
-def render_header():
-    """Render the hero header section."""
+def render_header() -> None:
+    """Render the hero header section with status indicators."""
     st.markdown('<h1 class="hero-title">💰 TARKOV PROFIT FINDER</h1>', unsafe_allow_html=True)
     st.markdown('<p class="hero-subtitle">Buy from Flea → Sell to Traders → Stack Roubles</p>', unsafe_allow_html=True)
     
@@ -579,8 +597,12 @@ def render_header():
 # =============================================================================
 # STATS OVERVIEW
 # =============================================================================
-def render_stats(df: pd.DataFrame):
-    """Render the main statistics overview."""
+def render_stats(df: pd.DataFrame) -> None:
+    """Render the main statistics overview with key metrics.
+    
+    Args:
+        df: DataFrame containing filtered market data.
+    """
     if df.empty:
         st.warning("No data available. Start the collector to begin tracking prices.")
         return
@@ -631,8 +653,12 @@ def render_stats(df: pd.DataFrame):
 # =============================================================================
 # TOP OPPORTUNITIES CARDS
 # =============================================================================
-def render_top_opportunities(df: pd.DataFrame):
-    """Render top trading opportunities as cards."""
+def render_top_opportunities(df: pd.DataFrame) -> None:
+    """Render top 6 trading opportunities as visual cards.
+    
+    Args:
+        df: DataFrame containing filtered market data sorted by profit.
+    """
     if df.empty:
         return
     
@@ -679,8 +705,12 @@ def render_top_opportunities(df: pd.DataFrame):
 # =============================================================================
 # MAIN DATA TABLE
 # =============================================================================
-def render_data_table(df: pd.DataFrame):
-    """Render the main data table."""
+def render_data_table(df: pd.DataFrame) -> None:
+    """Render the main data table with top 50 recommended trades.
+    
+    Args:
+        df: DataFrame containing filtered market data.
+    """
     if df.empty:
         st.info("No items match your filters.")
         return
@@ -717,8 +747,12 @@ def render_data_table(df: pd.DataFrame):
 # =============================================================================
 # MARKET EXPLORER - FULL DATABASE WITH SELF-FILTERING
 # =============================================================================
-def render_market_explorer(df: pd.DataFrame):
-    """Render a comprehensive market explorer with built-in filtering."""
+def render_market_explorer(df: pd.DataFrame) -> None:
+    """Render a comprehensive market explorer with built-in filtering.
+    
+    Args:
+        df: Full unfiltered DataFrame containing all market data.
+    """
     if df.empty:
         st.info("No market data available.")
         return
@@ -837,8 +871,12 @@ def render_market_explorer(df: pd.DataFrame):
 # =============================================================================
 # VISUAL MARKET ANALYTICS
 # =============================================================================
-def render_visual_analytics(df: pd.DataFrame):
-    """Render comprehensive visual analytics for the entire market."""
+def render_visual_analytics(df: pd.DataFrame) -> None:
+    """Render comprehensive visual analytics for the entire market.
+    
+    Args:
+        df: Full DataFrame containing all market data for analysis.
+    """
     if df.empty or len(df) < 5:
         st.info("Not enough data for visual analytics.")
         return
@@ -1272,8 +1310,12 @@ def render_visual_analytics(df: pd.DataFrame):
 # =============================================================================
 # ANALYTICS CHARTS
 # =============================================================================
-def render_analytics(df: pd.DataFrame):
-    """Render analytics visualizations."""
+def render_analytics(df: pd.DataFrame) -> None:
+    """Render analytics visualizations with ML insights.
+    
+    Args:
+        df: DataFrame containing filtered market data.
+    """
     if df.empty or len(df) < 3:
         st.info("Not enough data for analytics.")
         return
@@ -1425,8 +1467,12 @@ def render_analytics(df: pd.DataFrame):
 # =============================================================================
 # ITEM DETAIL VIEW
 # =============================================================================
-def render_item_detail(df: pd.DataFrame):
-    """Render detailed item analysis."""
+def render_item_detail(df: pd.DataFrame) -> None:
+    """Render detailed item analysis with price history.
+    
+    Args:
+        df: DataFrame containing filtered market data.
+    """
     if df.empty:
         return
     
@@ -1494,8 +1540,12 @@ def render_item_detail(df: pd.DataFrame):
 # =============================================================================
 # SYSTEM CONTROL PANEL
 # =============================================================================
-def render_system_panel():
-    """Render the system control and monitoring panel."""
+def render_system_panel() -> None:
+    """Render the system control and monitoring panel.
+    
+    Provides collector management, database statistics, log viewing,
+    and system maintenance controls.
+    """
     st.markdown("### ⚙️ System Control Panel")
     
     # Create tabs for different system functions
@@ -1844,8 +1894,12 @@ def render_system_panel():
 # =============================================================================
 # SETTINGS SIDEBAR
 # =============================================================================
-def render_sidebar():
-    """Render the settings sidebar."""
+def render_sidebar() -> dict:
+    """Render the settings sidebar with quick filters.
+    
+    Returns:
+        dict: Filter settings including min_profit, min_roi, category, search, show_negative.
+    """
     with st.sidebar:
         st.markdown("## 🎯 Quick Filters")
         
@@ -1904,7 +1958,8 @@ def render_sidebar():
 # =============================================================================
 # MAIN APP
 # =============================================================================
-def main():
+def main() -> None:
+    """Main application entry point - orchestrates all dashboard components."""
     # Sidebar filters
     filters = render_sidebar()
     

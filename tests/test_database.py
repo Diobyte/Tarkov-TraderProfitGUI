@@ -60,9 +60,44 @@ class TestDatabase(unittest.TestCase):
         # Retrieve
         latest = database.get_latest_prices()
         self.assertIsNotNone(latest)
+        assert latest is not None  # Help type checker understand
         self.assertEqual(len(latest), 1)
         self.assertEqual(latest[0][1], 'Test Item') # Name
         self.assertEqual(latest[0][5], 5000) # Profit
+
+    def test_save_and_retrieve_enhanced_format(self):
+        """Test saving and retrieving items with the enhanced 25-column format."""
+        database.init_db()
+        
+        now = datetime.now()
+        # Enhanced format: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, 
+        #                   icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, 
+        #                   weight, category, base_price, high_24h_price, last_offer_count, short_name,
+        #                   wiki_link, trader_level_required, trader_task_unlock, price_velocity, 
+        #                   liquidity_score, api_updated)
+        items = [
+            ('2', 'Enhanced Test Item', now, 20000, 25000, 'Peacekeeper', 5000, 
+             'http://icon.link', 2, 2, 21000, 18000, -3.5, 
+             2.5, 'Weapons', 15000, 22000, 100, 'ETI',
+             'http://wiki.link', 2, 'Test Task', 5.0, 
+             80.0, '2024-01-01T00:00:00')
+        ]
+        
+        database.save_prices_batch(items)
+        
+        # Retrieve
+        latest = database.get_latest_prices()
+        self.assertIsNotNone(latest)
+        assert latest is not None  # Help type checker understand
+        self.assertGreaterEqual(len(latest), 1)
+        
+        # Find our item
+        enhanced_item = next((r for r in latest if r[0] == '2'), None)
+        self.assertIsNotNone(enhanced_item)
+        assert enhanced_item is not None  # Help type checker understand
+        self.assertEqual(enhanced_item[1], 'Enhanced Test Item')  # Name
+        self.assertEqual(enhanced_item[5], 5000)  # Profit
+        self.assertEqual(enhanced_item[18], 'ETI')  # Short name
 
 if __name__ == '__main__':
     unittest.main()

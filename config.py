@@ -5,6 +5,14 @@ API_URL = 'https://api.tarkov.dev/graphql'
 COLLECTION_INTERVAL_MINUTES = 5
 DATA_RETENTION_DAYS = 7
 
+# Database Configuration
+DB_LOOKBACK_WINDOW_MINUTES = 45  # Window for fetching "latest" prices
+LIQUIDITY_NORMALIZATION_THRESHOLD = 50  # Offer count considered "high liquidity"
+MAX_LIQUIDITY_SCORE = 100  # Maximum liquidity score
+
+# Cache Configuration  
+STREAMLIT_CACHE_TTL_SECONDS = 60  # How long to cache data in Streamlit
+
 # Flea Market Level Requirements (Based on Patch 0.15+ changes)
 CATEGORY_LOCKS = {
     "Sniper rifle": 20,
