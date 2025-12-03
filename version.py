@@ -177,29 +177,6 @@ def check_for_updates(timeout: int = 5) -> Optional[dict]:
         return None
 
 
-def check_docker_image_update(timeout: int = 10) -> Optional[dict]:
-    """
-    Check if a newer Docker image is available on GHCR.
-    
-    This compares the local image's version label against the latest on GHCR.
-    
-    Args:
-        timeout: Request timeout in seconds.
-        
-    Returns:
-        dict with update info if available, None if current or error.
-    """
-    build_info = get_build_info()
-    
-    if not build_info["is_docker"]:
-        logger.debug("Not running in Docker, skipping Docker image update check")
-        return None
-    
-    # For Docker, we use the GitHub releases check as the source of truth
-    # since the VERSION file in the image matches the release version
-    return check_for_updates(timeout=timeout)
-
-
 def get_version_display() -> str:
     """
     Get a formatted version string for display in the UI.
