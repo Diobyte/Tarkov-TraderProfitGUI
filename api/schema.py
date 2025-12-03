@@ -5,9 +5,7 @@ Uses Strawberry for modern, type-safe GraphQL in Python.
 """
 
 import strawberry
-from strawberry.types import Info
 from typing import List, Optional
-from datetime import datetime
 import sys
 import os
 

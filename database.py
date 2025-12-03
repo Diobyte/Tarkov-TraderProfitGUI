@@ -9,7 +9,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional, Any, Callable, Dict, Final
+from typing import List, Tuple, Optional, Any, Callable, Dict
 from functools import wraps
 
 import config

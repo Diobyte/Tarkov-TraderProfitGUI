@@ -14,8 +14,6 @@ from enum import Enum
 from tempfile import NamedTemporaryFile
 
 import numpy as np
-import math
-import pandas as pd
 
 import config
 

@@ -21,7 +21,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.linear_model import Ridge
 import warnings
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Suppress sklearn convergence warnings that are expected with small datasets
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')

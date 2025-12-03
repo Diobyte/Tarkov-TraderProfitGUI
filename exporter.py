@@ -5,12 +5,11 @@ and trading recommendations in various formats (CSV, JSON, Excel).
 """
 
 import json
-import csv
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Final, Union
-from io import StringIO, BytesIO
+from typing import Dict, Any, Optional, List, Final
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
