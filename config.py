@@ -6,22 +6,33 @@ using the pattern TARKOV_{CONSTANT_NAME}.
 """
 
 import os
+import logging
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 def _get_env_int(key: str, default: int) -> int:
     """Get integer value from environment variable or use default."""
+    env_value = os.environ.get(f'TARKOV_{key}')
+    if env_value is None:
+        return default
     try:
-        return int(os.environ.get(f'TARKOV_{key}', default))
+        return int(env_value)
     except ValueError:
+        logger.warning(f"Invalid integer for TARKOV_{key}: {env_value!r}, using default {default}")
         return default
 
 
 def _get_env_float(key: str, default: float) -> float:
     """Get float value from environment variable or use default."""
+    env_value = os.environ.get(f'TARKOV_{key}')
+    if env_value is None:
+        return default
     try:
-        return float(os.environ.get(f'TARKOV_{key}', default))
+        return float(env_value)
     except ValueError:
+        logger.warning(f"Invalid float for TARKOV_{key}: {env_value!r}, using default {default}")
         return default
 
 

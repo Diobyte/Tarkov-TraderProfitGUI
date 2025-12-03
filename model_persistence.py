@@ -159,8 +159,13 @@ class ModelPersistence:
             category: Item category
             trader: Best trader name
         """
-        if not item_id:  # Skip empty item IDs
+        if not item_id or not isinstance(item_id, str):  # Skip empty or invalid item IDs
             return
+        
+        # Sanitize inputs to avoid NaN/inf issues
+        import math
+        if not isinstance(profit, (int, float)) or math.isnan(profit) or math.isinf(profit):
+            profit = 0.0
             
         if item_id not in self._state['item_statistics']:
             self._state['item_statistics'][item_id] = {

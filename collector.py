@@ -40,7 +40,8 @@ signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
 if sys.platform != 'win32':
     # SIGHUP is not available on Windows
-    signal.signal(signal.SIGHUP, handle_exit)  # type: ignore[attr-defined]
+    import signal as sig_module
+    signal.signal(sig_module.SIGHUP, handle_exit)  # type: ignore[attr-defined]
 
 # Session singleton for connection reuse
 _session: Optional[requests.Session] = None
@@ -220,8 +221,10 @@ def fetch_and_store_data() -> None:
         weight = item.get('weight', 0.0) or 0.0
         last_offer_count = item.get('lastOfferCount', 0) or 0
         updated = item.get('updated', '')
-        category_data = item.get('category', {})
-        category = category_data.get('name', 'Unknown') if category_data else 'Unknown'
+        category_data = item.get('category')
+        category = 'Unknown'
+        if category_data and isinstance(category_data, dict):
+            category = category_data.get('name', 'Unknown') or 'Unknown'
         
         # Find best Trader Sell Price (We sell to Trader)
         best_trader_price = 0
@@ -231,9 +234,11 @@ def fetch_and_store_data() -> None:
         
         sell_offers = item.get('sellFor') or []
         for sell_offer in sell_offers:
+            if not isinstance(sell_offer, dict):
+                continue
             if sell_offer.get('currency') == 'RUB' and sell_offer.get('source') != 'fleaMarket':
-                price = sell_offer.get('price', 0)
-                if price is not None and price > best_trader_price:
+                price = sell_offer.get('price')
+                if price is not None and isinstance(price, (int, float)) and price > best_trader_price:
                     best_trader_price = price
                     best_trader_name = sell_offer.get('source')
                     # Extract trader level requirement
@@ -249,9 +254,11 @@ def fetch_and_store_data() -> None:
         
         buy_offers = item.get('buyFor') or []
         for buy_offer in buy_offers:
+            if not isinstance(buy_offer, dict):
+                continue
             if buy_offer.get('currency') == 'RUB' and buy_offer.get('source') == 'fleaMarket':
-                price = buy_offer.get('price', 0)
-                if price is not None and price < best_flea_price:
+                price = buy_offer.get('price')
+                if price is not None and isinstance(price, (int, float)) and price < best_flea_price:
                     best_flea_price = price
         
         # If we found valid prices for both

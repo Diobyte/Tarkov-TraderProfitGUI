@@ -152,8 +152,22 @@ def find_all_collector_processes() -> list:
                         pass
                 
                 if is_collector:
-                    # Determine if it's from our project
-                    is_ours = any(project_dir in arg.lower() for arg in cmdline)
+                    # Determine if it's from our project using cwd or command line hints
+                    is_ours = False
+                    proc_cwd = (pinfo.get('cwd', '') or '').lower()
+                    if proc_cwd and project_dir in proc_cwd:
+                        is_ours = True
+                    elif any(project_dir in (arg or '').lower() for arg in cmdline):
+                        is_ours = True
+                    else:
+                        # Fall back to checking the resolved collector.py path if cwd is missing
+                        collector_path = next((arg for arg in cmdline if arg.endswith('collector.py')), '')
+                        if collector_path:
+                            resolved = collector_path
+                            if not os.path.isabs(resolved) and proc_cwd:
+                                resolved = os.path.abspath(os.path.join(proc_cwd, collector_path))
+                            if project_dir in resolved.lower():
+                                is_ours = True
                     
                     collector_processes.append({
                         'pid': pinfo['pid'],
@@ -204,9 +218,9 @@ def force_kill_all_collectors() -> Tuple[int, int]:
 def get_database_stats() -> dict:
     """Get database file statistics."""
     db_path = database.DB_NAME
-    stats = {
+    stats: dict = {
         'exists': os.path.exists(db_path),
-        'size_mb': 0,
+        'size_mb': 0.0,
         'size_str': '0 B',
         'path': db_path,
         'record_count': 0,
@@ -515,6 +529,17 @@ def load_data() -> pd.DataFrame:
                     df[col] = ''
                 else:
                     df[col] = 0
+        elif len(data[0]) >= 24:
+            # Use available columns
+            df = pd.DataFrame(data, columns=columns[:len(data[0])])
+            # Add any missing columns
+            for col in columns[len(data[0]):]:
+                if col == 'short_name':
+                    df[col] = df['name']
+                elif col in ('wiki_link', 'trader_task_unlock'):
+                    df[col] = ''
+                else:
+                    df[col] = 0
         else:
             df = pd.DataFrame(data, columns=columns)
         
@@ -548,6 +573,8 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
             - category: Category filter ('All' or specific category)
             - show_negative: Whether to include negative profit items
             - min_offers: Minimum offer count (default: 5)
+            - min_profit_per_slot: Minimum profit per inventory slot
+            - max_trader_level: Maximum allowed trader level
     
     Returns:
         pd.DataFrame: Filtered DataFrame matching all criteria.
@@ -555,13 +582,29 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if df.empty:
         return df
     
+    # Ensure required columns exist
+    required_cols = ['profit', 'roi', 'last_offer_count', 'name', 'category']
+    for col in required_cols:
+        if col not in df.columns:
+            if col in ('profit', 'roi', 'last_offer_count'):
+                df[col] = 0
+            else:
+                df[col] = ''
+    
     # Get minimum offers from filters, default to config value
     min_offers = filters.get('min_offers', config.VOLUME_MIN_FOR_RECOMMENDATION)
+    min_profit_per_slot = filters.get('min_profit_per_slot', 0)
+    max_trader_level = filters.get('max_trader_level', None)
+    
+    # Ensure profit_per_slot column exists
+    if 'profit_per_slot' not in df.columns:
+        df['profit_per_slot'] = 0
     
     filtered = df[
         (df['profit'] >= filters['min_profit']) &
         (df['roi'] >= filters['min_roi']) &
-        (df['last_offer_count'] >= min_offers)  # Filter out low-volume items
+        (df['last_offer_count'] >= min_offers) &
+        (df['profit_per_slot'] >= min_profit_per_slot)
     ]
     
     if filters['search']:
@@ -569,6 +612,9 @@ def get_filtered_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     
     if filters['category'] != 'All':
         filtered = filtered[filtered['category'] == filters['category']]
+
+    if max_trader_level is not None and 'trader_level_required' in filtered.columns:
+        filtered = filtered[filtered['trader_level_required'] <= max_trader_level]
     
     if not filters['show_negative']:
         filtered = filtered[filtered['profit'] > 0]
@@ -584,7 +630,7 @@ def render_header() -> None:
     st.markdown('<p class="hero-subtitle">Buy from Flea → Sell to Traders → Stack Roubles</p>', unsafe_allow_html=True)
     
     # Status bar
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3, col4 = st.columns([1, 2, 1, 1.2])
     
     with col1:
         running, pid, mode = is_collector_running()
@@ -611,6 +657,53 @@ def render_header() -> None:
         if st.button("🔄 Refresh", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
+
+    # Database & ML health indicator
+    with col4:
+        try:
+            db_health = database.get_database_health()
+        except Exception as e:  # pragma: no cover - defensive
+            logging.error(f"Failed to get database health: {e}")
+            db_health = {
+                'status': 'error',
+                'data_age_hours': 0,
+                'total_records': 0,
+                'errors': ['Failed to read database health'],
+            }
+
+        from ml_engine import get_ml_engine  # local import to avoid cycles
+
+        try:
+            ml_engine = get_ml_engine()
+            learning_status = ml_engine.get_trend_learning_status()
+        except Exception as e:  # pragma: no cover - defensive
+            logging.error(f"Failed to get ML learning status: {e}")
+            learning_status = {
+                'enabled': False,
+                'learning_quality': 0,
+                'items_with_history': 0,
+            }
+
+        status = str(db_health.get('status', 'unknown')).lower()
+        color = '#00D26A' if status == 'healthy' else ('#FFA502' if status == 'warning' else '#FF4757')
+        age_hours = float(db_health.get('data_age_hours', 0) or 0)
+        ml_quality = float(learning_status.get('learning_quality', 0) or 0)
+
+        st.markdown(
+            f"""
+            <div style="border-radius: 10px; padding: 8px 10px; border: 1px solid #2d3748; background: #111827;">
+              <div style="font-size: 0.75rem; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">System Health</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                <span style="font-size: 0.85rem; color: {color}; font-weight: 600;">DB: {status.title()}</span>
+                <span style="font-size: 0.75rem; color: #9CA3AF;">Age: {age_hours:.1f}h</span>
+              </div>
+              <div style="margin-top: 4px; font-size: 0.75rem; color: #9CA3AF;">
+                ML Learning: {ml_quality:.0f}%
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 # =============================================================================
 # STATS OVERVIEW
@@ -682,9 +775,9 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
     """
     if df.empty:
         return
-    
+
     st.markdown("### 🏆 Top ML-Ranked Opportunities")
-    st.caption("Ranked by learned profitability, consistency, and market trends")
+    st.caption("Ranked by learned profitability, consistency, and market trends. ML Score blends profit, ROI, liquidity, and historical consistency.")
     
     # Filter to reliable volume items only (>= 5 offers)
     reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
@@ -731,6 +824,8 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
             # Get ML score if available
             ml_score = item.get('ml_opportunity_score', 0)
             consistency = item.get('learned_consistency', 50)
+            profit_per_slot = item.get('profit_per_slot', 0)
+            trader_level = item.get('trader_level_required', 1)
             
             st.markdown(f"""
             <div class="profit-card">
@@ -754,7 +849,10 @@ def render_top_opportunities(df: pd.DataFrame) -> None:
                     </div>
                 </div>
                 <div style="margin-top: 8px; color: #6B7280; font-size: 0.8rem;">
-                    {item['trader_name']} • {item['category']} • {item.get('last_offer_count', 0):.0f} offers
+                    {item['trader_name']} (L{trader_level}) • {item['category']} • {item.get('last_offer_count', 0):.0f} offers
+                </div>
+                <div style="margin-top: 4px; color: #9CA3AF; font-size: 0.75rem;">
+                    Profit/slot: ₽{profit_per_slot:,.0f}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -774,9 +872,12 @@ def render_data_table(df: pd.DataFrame) -> None:
     if df.empty:
         st.info("No items match your filters.")
         return
-    
+
     st.markdown("### 🏆 Top ML-Recommended Trades")
-    st.caption(f"Items with ≥{config.VOLUME_MIN_FOR_RECOMMENDATION} offers, ranked by learned profitability and consistency.")
+    st.caption(
+        f"Items with ≥{config.VOLUME_MIN_FOR_RECOMMENDATION} offers, ranked by learned profitability and consistency. "
+        "ML Score blends profit, ROI, liquidity, and historical consistency."
+    )
     
     # Filter to items with reliable volume
     reliable_df = df[df['last_offer_count'] >= config.VOLUME_MIN_FOR_RECOMMENDATION]
@@ -1768,7 +1869,9 @@ def render_item_detail(df: pd.DataFrame) -> None:
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.image(item['icon_link'], width=128)
+        icon_link = item.get('icon_link', '')
+        if icon_link and isinstance(icon_link, str) and icon_link.startswith('http'):
+            st.image(icon_link, width=128)
         st.markdown(f"**{item['name']}**")
         st.caption(f"{item['category']}")
         

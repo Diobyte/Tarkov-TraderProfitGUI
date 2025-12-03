@@ -6,6 +6,7 @@ from typing import Optional, Union
 
 __all__ = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
 
+
 def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculates derived metrics for the prices dataframe.
@@ -23,6 +24,15 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     
     # Create a copy to avoid SettingWithCopyWarning
     df = df.copy()
+
+    # Ensure required columns exist; if missing, fill with safe defaults
+    required_numeric = [
+        'profit', 'flea_price', 'width', 'height', 'avg_24h_price',
+        'low_24h_price', 'weight'
+    ]
+    for col in required_numeric:
+        if col not in df.columns:
+            df[col] = 0
 
     # ROI - Return on Investment (Profit / Cost * 100)
     # Avoid division by zero using vectorized operations (faster than apply)
@@ -119,15 +129,22 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
     vr = sell_price
     
     # Base fee rate
-    if vr >= vo:
-        # Selling above base price
-        q = 1.0
-        fee = vo * 0.05 * 4 ** (q * (vr / vo - 1))
-    else:
-        # Selling below base price
-        fee = vo * 0.05
-    
-    return int(fee * modifier)
+    try:
+        if vr >= vo:
+            # Selling above base price
+            q = 1.0
+            ratio = vr / vo if vo > 0 else 1.0
+            # Cap the exponent to prevent overflow
+            exponent = min(q * (ratio - 1), 10)
+            fee = vo * 0.05 * (4 ** exponent)
+        else:
+            # Selling below base price
+            fee = vo * 0.05
+        
+        return int(fee * modifier)
+    except (OverflowError, ValueError):
+        # Handle extreme values gracefully
+        return int(vo * 0.05 * modifier)
 
 
 def format_roubles(value: Union[int, float, None]) -> str:

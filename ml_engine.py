@@ -598,6 +598,7 @@ class TarkovMLEngine:
         if df.empty:
             return df
         
+        # Make a copy to avoid modifying the original
         features = df.copy()
         
         # Add learned profit mean
@@ -1041,7 +1042,8 @@ class TarkovMLEngine:
         df['sma_long'] = df['profit'].rolling(window=6, min_periods=1).mean()
         
         # Trend detection - handle NaN from diff()
-        recent_trend = df['profit'].tail(5).diff().mean()
+        profit_diff = df['profit'].tail(5).diff().dropna()
+        recent_trend = profit_diff.mean() if len(profit_diff) > 0 else 0
         if pd.isna(recent_trend):
             recent_trend = 0
         
@@ -1247,9 +1249,10 @@ class TarkovMLEngine:
         
         # Filter to accessible items within risk tolerance AND sufficient volume
         # This filters out unreliable 1-5 offer items
-        has_volume = features.get('volume_reliable', True)
-        if isinstance(has_volume, bool):
-            has_volume = pd.Series([has_volume] * len(features), index=features.index)
+        if 'volume_reliable' in features.columns:
+            has_volume = features['volume_reliable'].astype(bool)
+        else:
+            has_volume = pd.Series([True] * len(features), index=features.index)
         
         recommended = features[
             features['accessible'] & 

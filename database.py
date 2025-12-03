@@ -113,29 +113,39 @@ def parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
     
     return None
 
-def retry_db_op(max_retries: int = 5, delay: float = 1.0):
+def retry_db_op(
+    max_retries: Optional[int] = None,
+    delay: Optional[float] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator to retry database operations when locked.
+
+    If *max_retries* or *delay* are not provided, they default to values from
+    ``config.DATABASE_RETRY_ATTEMPTS`` and ``config.DATABASE_RETRY_DELAY``.
     """
-    Decorator to retry database operations when locked.
-    """
-    def decorator(func: Callable):
+
+    effective_retries = max_retries or config.DATABASE_RETRY_ATTEMPTS
+    effective_delay = delay or config.DATABASE_RETRY_DELAY
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            for attempt in range(effective_retries):
                 try:
                     return func(*args, **kwargs)
                 except sqlite3.OperationalError as e:
-                    if "locked" in str(e).lower():
-                        if attempt < max_retries - 1:
-                            time.sleep(delay)
-                            continue
-                    logging.error(f"Database error in {func.__name__}: {e}")
-                    raise e
-                except Exception as e:
-                    logging.error(f"Unexpected error in {func.__name__}: {e}")
-                    raise e
-            # This return should never be reached due to the raise above
+                    if "locked" in str(e).lower() and attempt < effective_retries - 1:
+                        time.sleep(effective_delay)
+                        continue
+                    logging.error(f"Database error in %s: %s", func.__name__, e)
+                    raise
+                except Exception as e:  # pragma: no cover - unexpected path
+                    logging.error(f"Unexpected error in %s: %s", func.__name__, e)
+                    raise
+            # Should be unreachable because we re-raise above
             return None  # pragma: no cover
+
         return wrapper
+
     return decorator
 
 @retry_db_op()
@@ -247,6 +257,10 @@ def save_prices_batch(items: List[Tuple]) -> None:
     first_len = len(items[0])
     if not all(len(item) == first_len for item in items):
         raise ValueError("All items must have the same number of columns")
+    
+    # Validate tuple length is expected
+    if first_len not in (15, 25):
+        logging.warning(f"Unexpected item tuple length: {first_len}. Expected 15 or 25.")
         
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -476,15 +490,18 @@ def get_latest_timestamp() -> Optional[datetime]:
     Returns:
         datetime object of the most recent record, or None if no data.
     """
-    conn = sqlite3.connect(DB_NAME, timeout=30)
-    c = conn.cursor()
-    c.execute('SELECT MAX(timestamp) FROM prices')
-    result = c.fetchone()
-    conn.close()
-    
-    if result and result[0]:
-        return parse_timestamp(result[0])
-    return None
+    try:
+        conn = sqlite3.connect(DB_NAME, timeout=30)
+        c = conn.cursor()
+        c.execute('SELECT MAX(timestamp) FROM prices')
+        result = c.fetchone()
+        conn.close()
+        
+        if result and result[0]:
+            return parse_timestamp(result[0])
+        return None
+    except sqlite3.Error:
+        return None
 
 @retry_db_op()
 def clear_all_data() -> None:

@@ -122,6 +122,10 @@ class DataExporter:
         try:
             # Limit sheet name to 31 characters (Excel limit)
             safe_sheet_name = sheet_name[:31] if len(sheet_name) > 31 else sheet_name
+            # Also ensure sheet name doesn't contain invalid characters
+            invalid_chars = [':', '\\', '/', '?', '*', '[', ']']
+            for char in invalid_chars:
+                safe_sheet_name = safe_sheet_name.replace(char, '_')
             df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
             logger.info(f"Exported {len(df)} rows to {filename}")
         except ImportError:
@@ -129,10 +133,12 @@ class DataExporter:
             logger.warning("openpyxl not installed, falling back to CSV")
             filename = filename.replace('.xlsx', '.csv')
             df.to_csv(filename, index=False, encoding='utf-8')
+            logger.info(f"Exported {len(df)} rows to {filename} (CSV fallback)")
         except Exception as e:
             logger.error(f"Excel export failed: {e}, falling back to CSV")
             filename = filename.replace('.xlsx', '.csv')
             df.to_csv(filename, index=False, encoding='utf-8')
+            logger.info(f"Exported {len(df)} rows to {filename} (CSV fallback)")
         
         return filename
     

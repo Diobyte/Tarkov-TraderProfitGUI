@@ -1,10 +1,3 @@
-"""
-Alert System for Tarkov Trader Profit Analysis.
-
-This module provides price alert functionality to notify users when
-items reach profitable thresholds or unusual market conditions occur.
-"""
-
 """Alert System for Tarkov Trader Profit Analysis.
 
 This module provides price alert functionality to notify users when
@@ -18,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field, asdict
 from enum import Enum
+from tempfile import NamedTemporaryFile
 
 import config
 
@@ -30,6 +24,25 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ALERTS_FILE = os.path.join(BASE_DIR, 'price_alerts.json')
 ALERT_HISTORY_FILE = os.path.join(BASE_DIR, 'alert_history.json')
+
+
+def _atomic_json_dump(file_path: str, payload: Dict[str, Any] | List[Dict[str, Any]]) -> None:
+    """Write JSON data atomically to avoid corrupting alert files."""
+    directory = os.path.dirname(file_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    try:
+        with NamedTemporaryFile('w', delete=False, dir=directory or '.', encoding='utf-8') as tmp:
+            json.dump(payload, tmp, indent=2, default=str)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            temp_name = tmp.name
+        os.replace(temp_name, file_path)
+    except OSError as e:
+        # Fall back to direct write if atomic write fails
+        logger.warning(f"Atomic write failed, using direct write: {e}")
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, indent=2, default=str)
 
 
 class AlertType(Enum):
@@ -120,13 +133,17 @@ class AlertManager:
         if os.path.exists(self.alerts_file):
             try:
                 with open(self.alerts_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                    data: Dict[str, Any] = json.load(f)
                     for alert_id, alert_data in data.items():
-                        self._alerts[alert_id] = Alert.from_dict(alert_data)
+                        try:
+                            self._alerts[alert_id] = Alert.from_dict(alert_data)
+                        except TypeError:
+                            logger.warning("Skipping invalid alert entry while loading alerts")
                 logger.info(f"Loaded {len(self._alerts)} alerts")
-            except Exception as e:
-                logger.warning(f"Failed to load alerts: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to load alerts, recreating defaults: {e}")
                 self._alerts = {}
+                self._create_default_alerts()
         else:
             self._create_default_alerts()
     
@@ -135,11 +152,12 @@ class AlertManager:
         if os.path.exists(self.history_file):
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
-                    self._history = json.load(f)
-                # Keep only last 500 entries
-                self._history = self._history[-500:]
-            except Exception as e:
-                logger.warning(f"Failed to load alert history: {e}")
+                    history: List[Dict[str, Any]] = json.load(f)
+                # Keep only last N entries based on config
+                max_history = max(config.ALERT_MAX_HISTORY, 1)
+                self._history = history[-max_history:]
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to load alert history, starting fresh: {e}")
                 self._history = []
     
     def _create_default_alerts(self) -> None:
@@ -148,17 +166,19 @@ class AlertManager:
             Alert(
                 id="high_profit_auto",
                 alert_type=AlertType.PROFIT_THRESHOLD.value,
-                threshold_value=10000,
+                threshold_value=float(config.ALERT_HIGH_PROFIT_THRESHOLD),
                 threshold_type="above",
                 priority=AlertPriority.HIGH.value,
+                cooldown_minutes=config.ALERT_DEFAULT_COOLDOWN_MINUTES,
                 message="Item has very high profit potential"
             ),
             Alert(
                 id="high_roi_auto",
                 alert_type=AlertType.HIGH_ROI.value,
-                threshold_value=50.0,
+                threshold_value=float(config.ALERT_HIGH_ROI_THRESHOLD),
                 threshold_type="above",
                 priority=AlertPriority.MEDIUM.value,
+                cooldown_minutes=config.ALERT_DEFAULT_COOLDOWN_MINUTES,
                 message="Item has exceptional ROI"
             ),
             Alert(
@@ -166,6 +186,7 @@ class AlertManager:
                 alert_type=AlertType.ARBITRAGE_OPPORTUNITY.value,
                 threshold_value=0,
                 priority=AlertPriority.CRITICAL.value,
+                cooldown_minutes=config.ALERT_DEFAULT_COOLDOWN_MINUTES,
                 message="Unusual arbitrage opportunity detected"
             ),
         ]
@@ -177,8 +198,7 @@ class AlertManager:
         """Save alerts to file."""
         try:
             data = {aid: alert.to_dict() for aid, alert in self._alerts.items()}
-            with open(self.alerts_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
+            _atomic_json_dump(self.alerts_file, data)
             return True
         except Exception as e:
             logger.error(f"Failed to save alerts: {e}")
@@ -187,8 +207,8 @@ class AlertManager:
     def save_history(self) -> bool:
         """Save alert history to file."""
         try:
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                json.dump(self._history[-500:], f, indent=2)
+            max_history = max(config.ALERT_MAX_HISTORY, 1)
+            _atomic_json_dump(self.history_file, self._history[-max_history:])
             return True
         except Exception as e:
             logger.error(f"Failed to save alert history: {e}")
