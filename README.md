@@ -1,21 +1,39 @@
 # 💰 Tarkov Trader Profit GUI
 
-A powerful, automated dashboard for **Escape from Tarkov** that identifies profitable trading flips between the Flea Market and Traders.
+A powerful, ML-enhanced dashboard for **Escape from Tarkov** that identifies profitable trading flips between the Flea Market and Traders.
 
 **Stop guessing. Start profiting.**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![Version](https://img.shields.io/badge/version-3.0-green)
 
 ## 🌟 Features
 
+### Core Features
+
 - **Real-Time Data**: Fetches live market data from the [tarkov.dev API](https://tarkov.dev/api/) every 5 minutes.
-- **Smart Analysis**: Automatically calculates **Profit**, **ROI**, and **Profit Per Slot**.
-- **Machine Learning**: Uses K-Means clustering to categorize items into **"Stable"** (Safe) vs **"Volatile"** (Risky) investments.
+- **Smart Analysis**: Automatically calculates **Profit**, **ROI**, **Profit Per Slot**, and **Risk Scores**.
 - **Visual Dashboard**: Built with Streamlit for interactive sorting, filtering, and charting.
 - **Historical Trends**: Tracks price history to help you spot market dips and spikes.
 - **Background Collector**: Runs silently in the background to build a local database of price history.
+
+### 🤖 ML-Powered Analysis (v3.0)
+
+- **Adaptive Opportunity Scoring**: Multi-factor ML scoring that weighs profit, ROI, liquidity, and price position.
+- **Anomaly Detection**: Isolation Forest identifies unusual pricing patterns that may indicate arbitrage opportunities.
+- **Smart Clustering**: K-Means clustering groups items into strategy tiers (Elite, High Value, Solid, Avoid).
+- **Risk Assessment**: Comprehensive risk scoring based on volatility, liquidity, momentum, and margin.
+- **Trend Prediction**: Linear regression-based trend forecasting with confidence intervals.
+- **Similar Item Finder**: KNN-based similarity search to find alternative trading opportunities.
+
+### 📊 Enhanced Visualizations
+
+- **3D Opportunity Space**: Interactive 3D scatter plot of profit dimensions.
+- **Risk vs Reward Quadrant**: Visual strategy guide with annotated zones.
+- **Correlation Heatmaps**: Discover relationships between price factors.
+- **Market Intelligence Dashboard**: Comprehensive multi-panel analysis view.
 
 ## 🚀 Quick Start (Windows)
 

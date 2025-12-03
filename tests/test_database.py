@@ -59,6 +59,7 @@ class TestDatabase(unittest.TestCase):
         
         # Retrieve
         latest = database.get_latest_prices()
+        self.assertIsNotNone(latest)
         self.assertEqual(len(latest), 1)
         self.assertEqual(latest[0][1], 'Test Item') # Name
         self.assertEqual(latest[0][5], 5000) # Profit

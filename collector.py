@@ -11,6 +11,7 @@ import signal
 import argparse
 import os
 from typing import Optional, Dict, Any
+from types import FrameType
 
 import config
 
@@ -27,7 +28,7 @@ logging.basicConfig(
     ]
 )
 
-def handle_exit(signum: int, frame: Any) -> None:
+def handle_exit(signum: int, frame: Optional[FrameType]) -> None:
     logging.info(f"Collector stopped by signal {signum}.")
     sys.exit(0)
 
@@ -88,15 +89,20 @@ def fetch_and_store_data() -> None:
         items(lang: en, offset: $offset, limit: $limit) {
             id
             name
+            shortName
             width
             height
+            basePrice
             avg24hPrice
             low24hPrice
+            high24hPrice
             changeLast48hPercent
             weight
             iconLink
+            wikiLink
             types
             lastOfferCount
+            updated
             category {
                 name
             }
@@ -104,11 +110,31 @@ def fetch_and_store_data() -> None:
                 price
                 source
                 currency
+                vendor {
+                    name
+                    ... on TraderOffer {
+                        minTraderLevel
+                        taskUnlock {
+                            id
+                            name
+                        }
+                    }
+                }
             }
             buyFor {
                 price
                 source
                 currency
+                vendor {
+                    name
+                    ... on TraderOffer {
+                        minTraderLevel
+                        taskUnlock {
+                            id
+                            name
+                        }
+                    }
+                }
             }
         }
     }
@@ -153,19 +179,27 @@ def fetch_and_store_data() -> None:
 
         item_id = item['id']
         name = item['name']
+        short_name = item.get('shortName', name)
         icon_link = item.get('iconLink', '')
+        wiki_link = item.get('wikiLink', '')
         width = item.get('width', 1)
         height = item.get('height', 1)
+        base_price = item.get('basePrice', 0) or 0
         avg_24h_price = item.get('avg24hPrice', 0) or 0
         low_24h_price = item.get('low24hPrice', 0) or 0
+        high_24h_price = item.get('high24hPrice', 0) or 0
         change_last_48h = item.get('changeLast48hPercent', 0.0) or 0.0
         weight = item.get('weight', 0.0) or 0.0
+        last_offer_count = item.get('lastOfferCount', 0) or 0
+        updated = item.get('updated', '')
         category_data = item.get('category', {})
         category = category_data.get('name', 'Unknown') if category_data else 'Unknown'
         
         # Find best Trader Sell Price (We sell to Trader)
         best_trader_price = 0
         best_trader_name = None
+        trader_level_required = 1
+        trader_task_unlock = None
         
         sell_offers = item.get('sellFor') or []
         for sell_offer in sell_offers:
@@ -174,6 +208,13 @@ def fetch_and_store_data() -> None:
                 if price is not None and price > best_trader_price:
                     best_trader_price = price
                     best_trader_name = sell_offer.get('source')
+                    # Extract trader level requirement
+                    vendor = sell_offer.get('vendor', {})
+                    if vendor:
+                        trader_level_required = vendor.get('minTraderLevel', 1) or 1
+                        task_data = vendor.get('taskUnlock')
+                        if task_data:
+                            trader_task_unlock = task_data.get('name')
         
         # Find best Flea Buy Price (We buy from Flea)
         best_flea_price = float('inf')
@@ -189,11 +230,24 @@ def fetch_and_store_data() -> None:
         if best_trader_price > 0 and best_flea_price != float('inf') and best_flea_price > 0:
             profit = best_trader_price - best_flea_price
             
-            # Add to batch
+            # Calculate price velocity (how much the price differs from avg - opportunity indicator)
+            price_velocity = 0.0
+            if avg_24h_price > 0:
+                price_velocity = ((avg_24h_price - best_flea_price) / avg_24h_price) * 100
+            
+            # Calculate liquidity score based on offer count (more offers = easier to buy)
+            # Normalize: 0-10 offers = low, 10-50 = medium, 50+ = high liquidity
+            liquidity_score = min(last_offer_count / 50.0, 1.0) * 100 if last_offer_count else 0
+            
+            # Add to batch - now with enhanced data
             batch_data.append((
                 item_id, name, current_time, best_flea_price, best_trader_price, 
                 best_trader_name, profit, icon_link, width, height, 
-                avg_24h_price, low_24h_price, change_last_48h, weight, category
+                avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                # New fields
+                base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                trader_level_required, trader_task_unlock, price_velocity, liquidity_score,
+                updated
             ))
             
     if batch_data:

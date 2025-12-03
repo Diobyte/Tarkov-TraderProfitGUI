@@ -57,7 +57,17 @@ def init_db() -> None:
             low_24h_price INTEGER,
             change_last_48h REAL,
             weight REAL,
-            category TEXT
+            category TEXT,
+            base_price INTEGER,
+            high_24h_price INTEGER,
+            last_offer_count INTEGER,
+            short_name TEXT,
+            wiki_link TEXT,
+            trader_level_required INTEGER,
+            trader_task_unlock TEXT,
+            price_velocity REAL,
+            liquidity_score REAL,
+            api_updated TEXT
         )
     ''')
     
@@ -84,6 +94,21 @@ def init_db() -> None:
         c.execute('ALTER TABLE prices ADD COLUMN weight REAL DEFAULT 0.0')
         c.execute('ALTER TABLE prices ADD COLUMN category TEXT DEFAULT "Unknown"')
 
+    # Check if enhanced analysis columns exist (v2 migration)
+    try:
+        c.execute('SELECT base_price FROM prices LIMIT 1')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE prices ADD COLUMN base_price INTEGER DEFAULT 0')
+        c.execute('ALTER TABLE prices ADD COLUMN high_24h_price INTEGER DEFAULT 0')
+        c.execute('ALTER TABLE prices ADD COLUMN last_offer_count INTEGER DEFAULT 0')
+        c.execute('ALTER TABLE prices ADD COLUMN short_name TEXT')
+        c.execute('ALTER TABLE prices ADD COLUMN wiki_link TEXT')
+        c.execute('ALTER TABLE prices ADD COLUMN trader_level_required INTEGER DEFAULT 1')
+        c.execute('ALTER TABLE prices ADD COLUMN trader_task_unlock TEXT')
+        c.execute('ALTER TABLE prices ADD COLUMN price_velocity REAL DEFAULT 0.0')
+        c.execute('ALTER TABLE prices ADD COLUMN liquidity_score REAL DEFAULT 0.0')
+        c.execute('ALTER TABLE prices ADD COLUMN api_updated TEXT')
+
     # Create indexes for performance
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp ON prices (timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_item_id ON prices (item_id)')
@@ -91,6 +116,8 @@ def init_db() -> None:
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp_item ON prices (timestamp, item_id)')
     # Index for optimizing "latest per item" queries
     c.execute('CREATE INDEX IF NOT EXISTS idx_prices_item_timestamp ON prices (item_id, timestamp)')
+    # Index for liquidity filtering
+    c.execute('CREATE INDEX IF NOT EXISTS idx_prices_liquidity ON prices (liquidity_score)')
 
     # Optimize database
     c.execute('PRAGMA optimize;')
@@ -111,7 +138,10 @@ def save_prices_batch(items: List[Tuple]) -> None:
     c = conn.cursor()
     
     # Prepare the data for executemany
-    # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+    # Expected tuple: (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
+    #                  avg_24h_price, low_24h_price, change_last_48h, weight, category,
+    #                  base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+    #                  trader_level_required, trader_task_unlock, price_velocity, liquidity_score, api_updated)
     
     # Convert datetime objects to string to ensure consistency
     processed_items = []
@@ -122,16 +152,29 @@ def save_prices_batch(items: List[Tuple]) -> None:
             item_list[2] = item_list[2].isoformat()
         processed_items.append(tuple(item_list))
 
-    c.executemany('''
-        INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', processed_items)
+    # Handle both old format (15 columns) and new format (25 columns)
+    if len(processed_items[0]) == 15:
+        # Old format - backward compatibility
+        c.executemany('''
+            INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', processed_items)
+    else:
+        # New enhanced format
+        c.executemany('''
+            INSERT INTO prices (item_id, name, timestamp, flea_price, trader_price, trader_name, profit, icon_link, width, height, 
+                avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                trader_level_required, trader_task_unlock, price_velocity, liquidity_score, api_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', processed_items)
     
     conn.commit()
     conn.close()
 
 @retry_db_op()
-def get_latest_prices() -> Optional[List[Tuple]]:
+def get_latest_prices() -> List[Tuple]:
+    """Get the latest prices for all items."""
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     
@@ -157,7 +200,10 @@ def get_latest_prices() -> Optional[List[Tuple]]:
         except ValueError:
             # If parsing fails, fallback to exact match logic (old behavior)
             c.execute('''
-                SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, avg_24h_price, low_24h_price, change_last_48h, weight, category
+                SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
+                    avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                    base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                    trader_level_required, trader_task_unlock, price_velocity, liquidity_score
                 FROM prices
                 WHERE timestamp = ?
                 ORDER BY profit DESC
@@ -175,7 +221,9 @@ def get_latest_prices() -> Optional[List[Tuple]]:
         SELECT 
             p.item_id, p.name, p.flea_price, p.trader_price, p.trader_name, p.profit, 
             p.timestamp, p.icon_link, p.width, p.height, p.avg_24h_price, 
-            p.low_24h_price, p.change_last_48h, p.weight, p.category
+            p.low_24h_price, p.change_last_48h, p.weight, p.category,
+            p.base_price, p.high_24h_price, p.last_offer_count, p.short_name, p.wiki_link,
+            p.trader_level_required, p.trader_task_unlock, p.price_velocity, p.liquidity_score
         FROM prices p
         INNER JOIN (
             SELECT item_id, MAX(timestamp) as max_ts
@@ -191,7 +239,8 @@ def get_latest_prices() -> Optional[List[Tuple]]:
     return rows
 
 @retry_db_op()
-def get_item_history(item_id: str) -> Optional[List[Tuple]]:
+def get_item_history(item_id: str) -> List[Tuple]:
+    """Get the price history for a specific item."""
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
@@ -205,7 +254,7 @@ def get_item_history(item_id: str) -> Optional[List[Tuple]]:
     return rows
 
 @retry_db_op()
-def get_market_trends(hours: int = 6) -> Optional[List[Tuple]]:
+def get_market_trends(hours: int = 6) -> List[Tuple]:
     """
     Calculates volatility and average profit over the last X hours.
     Returns a dictionary keyed by item_id.
@@ -250,7 +299,8 @@ def get_market_trends(hours: int = 6) -> Optional[List[Tuple]]:
     return rows
 
 @retry_db_op()
-def get_all_prices() -> Optional[List[Tuple]]:
+def get_all_prices() -> List[Tuple]:
+    """Get all prices from the database."""
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     c.execute('''
