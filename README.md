@@ -4,7 +4,7 @@ A powerful, ML-enhanced dashboard for **Escape from Tarkov** that identifies pro
 
 **Stop guessing. Start profiting.**
 
-![Dashboard Demo](Recording%202025-12-02%20174142.gif)
+![Dashboard Demo](tarkov.gif)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -93,6 +93,7 @@ If you prefer PowerShell directly:
 - **Visual Dashboard**: Built with Streamlit for interactive sorting, filtering, and charting
 - **Historical Trends**: Tracks price history to help you spot market dips and spikes
 - **Background Collector**: Runs silently in the background to build a local database of price history
+- **Flea Market Level Filtering**: Filter items by player level requirements (Patch 1.0+ support)
 
 ### 🤖 ML-Powered Analysis (v3.0)
 
@@ -109,6 +110,18 @@ If you prefer PowerShell directly:
 - **Correlation Heatmaps**: Discover relationships between price factors
 - **Market Intelligence Dashboard**: Comprehensive multi-panel analysis view
 - **Price History Charts**: Track any item's price over time
+
+### 📥 Data Export
+
+- **CSV & JSON Export**: Export filtered data from any table view
+- **Customizable Exports**: Export Top Trades, Market Explorer, or Category Summaries
+- **Local Storage**: Exports saved to `/exports` directory
+
+### 🔔 Alert System
+
+- **High Profit Alerts**: Automatic notifications when items exceed profit thresholds
+- **High ROI Alerts**: Track items with exceptional return on investment
+- **Configurable Thresholds**: Customize via environment variables
 
 ---
 
@@ -152,19 +165,22 @@ Once the app is running, your browser will open to `http://localhost:8501`.
 
 - **Min Profit**: Filter out low-value items
 - **Min ROI**: Ensure your investment yields a good percentage return
+- **Player Level**: Filter by Flea Market level requirements (Patch 1.0+)
 - **Category**: Focus on specific item types
 - **Search**: Find specific items by name
+- **Show Negative Profit**: Toggle to include/exclude losing trades
+- **Quick Actions**: Refresh data or Start/Stop the collector
 
 ### Main Tabs
 
-| Tab                     | Description                                 |
-| ----------------------- | ------------------------------------------- |
-| 🏆 **Top Trades**       | Best profit opportunities sorted by profit  |
-| 🌐 **Market Explorer**  | Browse ALL items with advanced filtering    |
-| 🎨 **Visual Analytics** | Charts, heatmaps, and market visualizations |
-| 📈 **ML Insights**      | Machine learning analysis and risk scoring  |
-| 🔍 **Item Details**     | Deep dive into specific item price history  |
-| ⚙️ **System**           | Collector status, database stats, logs      |
+| Tab                     | Description                                    |
+| ----------------------- | ---------------------------------------------- |
+| 🏆 **Top Trades**       | Best profit opportunities sorted by profit     |
+| 🌐 **Market Explorer**  | Browse ALL items with advanced filtering       |
+| 🎨 **Visual Analytics** | Charts, heatmaps, and market visualizations    |
+| 📈 **ML Insights**      | Machine learning analysis and risk scoring     |
+| 🔍 **Item Details**     | Deep dive into specific item price history     |
+| ⚙️ **System**           | Collector status, database stats, logs, alerts |
 
 ### The Collector
 
@@ -180,6 +196,29 @@ Once the app is running, your browser will open to `http://localhost:8501`.
 ```bash
 # Activate virtual environment first, then:
 pytest tests/ -v
+```
+
+---
+
+## ⚙️ Configuration
+
+All settings can be customized via environment variables with the `TARKOV_` prefix:
+
+| Variable                             | Default | Description                   |
+| ------------------------------------ | ------- | ----------------------------- |
+| `TARKOV_COLLECTION_INTERVAL_MINUTES` | `5`     | Data fetch frequency          |
+| `TARKOV_DATA_RETENTION_DAYS`         | `7`     | Days to keep historical data  |
+| `TARKOV_API_TIMEOUT_SECONDS`         | `30`    | API request timeout           |
+| `TARKOV_ALERT_HIGH_PROFIT_THRESHOLD` | `10000` | Profit alert trigger (₽)      |
+| `TARKOV_ALERT_HIGH_ROI_THRESHOLD`    | `50.0`  | ROI alert trigger (%)         |
+| `TARKOV_ML_ANOMALY_CONTAMINATION`    | `0.05`  | Anomaly detection sensitivity |
+
+Example:
+
+```powershell
+$env:TARKOV_COLLECTION_INTERVAL_MINUTES = "10"
+$env:TARKOV_DATA_RETENTION_DAYS = "14"
+.\run.ps1
 ```
 
 ---

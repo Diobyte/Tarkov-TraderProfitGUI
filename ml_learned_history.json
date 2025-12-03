@@ -264,11 +264,19 @@
       "profitable_rate": 0.00589512876202296,
       "avg_profit": -69045.60409556315,
       "accuracy": null
+    },
+    {
+      "timestamp": "2025-12-02T22:53:24.611704",
+      "items_processed": 3223,
+      "profitable_count": 19,
+      "profitable_rate": 0.00589512876202296,
+      "avg_profit": -69083.98324542351,
+      "accuracy": null
     }
   ],
   "daily_summaries": [],
   "category_trends": {},
   "accuracy_history": [],
-  "total_items_seen": 106359,
-  "total_profitable_items": 599
+  "total_items_seen": 109582,
+  "total_profitable_items": 618
 }
