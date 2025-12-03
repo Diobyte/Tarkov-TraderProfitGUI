@@ -283,3 +283,167 @@ class TestMLEngineEdgeCases:
         result = engine.calculate_risk_score(df)
         assert 'risk_score' in result.columns
         assert result['risk_score'].notna().all()
+
+
+class TestTrendLearning:
+    """Tests for trend learning functionality."""
+    
+    @pytest.fixture
+    def ml_engine(self):
+        """Create a fresh ML engine instance."""
+        return TarkovMLEngine()
+    
+    @pytest.fixture
+    def sample_df(self):
+        """Create a sample DataFrame for testing."""
+        return pd.DataFrame({
+            'item_id': ['item1', 'item2', 'item3', 'item4', 'item5'] * 3,
+            'name': ['Item A', 'Item B', 'Item C', 'Item D', 'Item E'] * 3,
+            'flea_price': [10000, 20000, 15000, 50000, 8000] * 3,
+            'trader_price': [12000, 18000, 20000, 45000, 15000] * 3,
+            'profit': [2000, -2000, 5000, -5000, 7000] * 3,
+            'width': [1, 2, 1, 2, 1] * 3,
+            'height': [2, 2, 1, 3, 1] * 3,
+            'weight': [0.5, 1.0, 0.3, 2.0, 0.1] * 3,
+            'category': ['Weapons', 'Gear', 'Meds', 'Weapons', 'Meds'] * 3,
+            'avg_24h_price': [11000, 21000, 14000, 55000, 9000] * 3,
+            'high_24h_price': [12000, 22000, 16000, 60000, 10000] * 3,
+            'low_24h_price': [9000, 19000, 13000, 48000, 7000] * 3,
+            'base_price': [8000, 15000, 12000, 40000, 6000] * 3,
+            'last_offer_count': [50, 10, 100, 5, 200] * 3,
+            'trader_level_required': [1, 2, 1, 4, 1] * 3,
+            'change_last_48h': [5.0, -10.0, 2.0, -15.0, 8.0] * 3
+        })
+    
+    def test_calculate_trend_features_no_trend_data(self, ml_engine, sample_df):
+        """Test trend feature calculation when no trend data loaded."""
+        result = ml_engine.calculate_trend_features(sample_df)
+        
+        # Should add default trend columns
+        assert 'profit_trend' in result.columns
+        assert 'historical_volatility' in result.columns
+        assert 'consistency_score' in result.columns
+        assert 'trend_confidence' in result.columns
+        assert 'trend_direction' in result.columns
+        
+        # All trend confidence should be 0 when no historical data
+        assert (result['trend_confidence'] == 0).all()
+    
+    def test_calculate_trend_features_with_trend_data(self, ml_engine, sample_df):
+        """Test trend feature calculation with mocked trend data."""
+        # Manually set trend data
+        ml_engine.trend_data = pd.DataFrame({
+            'item_id': ['item1', 'item2', 'item3'],
+            'data_points': [12, 8, 15],
+            'avg_profit': [1800, -1500, 4500],
+            'min_profit': [1500, -2500, 4000],
+            'max_profit': [2200, -500, 5500],
+            'avg_flea_price': [9500, 21000, 14500],
+            'avg_trader_price': [11500, 19000, 19500],
+            'avg_offers': [45, 12, 95],
+            'first_seen': '2024-01-01T00:00:00',
+            'last_seen': '2024-01-02T00:00:00'
+        })
+        
+        result = ml_engine.calculate_trend_features(sample_df)
+        
+        # Items with history should have non-zero trend confidence
+        item1_rows = result[result['item_id'] == 'item1']
+        assert (item1_rows['trend_confidence'] > 0).all()
+        
+        # Items without history should have default values
+        item4_rows = result[result['item_id'] == 'item4']
+        assert (item4_rows['trend_confidence'] == 0).all()
+    
+    def test_get_trend_enhanced_score(self, ml_engine, sample_df):
+        """Test trend-enhanced scoring."""
+        result = ml_engine.get_trend_enhanced_score(sample_df)
+        
+        assert 'trend_enhanced_score' in result.columns
+        assert 'trend_rank' in result.columns
+        assert 'ml_opportunity_score' in result.columns
+        
+        # Scores should be within valid range
+        assert result['trend_enhanced_score'].min() >= 0
+        assert result['trend_enhanced_score'].max() <= 100
+    
+    def test_get_trend_learning_status_no_data(self, ml_engine):
+        """Test trend learning status when no data loaded."""
+        status = ml_engine.get_trend_learning_status()
+        
+        assert status['enabled'] == False
+        assert status['items_with_history'] == 0
+        assert status['learning_quality'] == 0
+    
+    def test_get_trend_learning_status_with_data(self, ml_engine):
+        """Test trend learning status with mocked data."""
+        ml_engine.trend_data = pd.DataFrame({
+            'item_id': ['item1', 'item2', 'item3'],
+            'data_points': [12, 8, 15],
+            'avg_profit': [1000, 2000, 3000]
+        })
+        ml_engine.profit_stats = {'total_records': 100, 'avg_profit': 2000}
+        
+        status = ml_engine.get_trend_learning_status()
+        
+        assert status['enabled'] == True
+        assert status['items_with_history'] == 3
+        assert status['total_data_points'] == 35
+        assert status['profit_stats'] is not None
+    
+    def test_get_item_trend_summary_not_found(self, ml_engine):
+        """Test item trend summary when item not found."""
+        result = ml_engine.get_item_trend_summary('nonexistent')
+        assert result is None
+    
+    def test_get_item_trend_summary_found(self, ml_engine):
+        """Test item trend summary when item exists."""
+        ml_engine.trend_data = pd.DataFrame({
+            'item_id': ['item1', 'item2'],
+            'data_points': [12, 8],
+            'avg_profit': [1500, 2500],
+            'min_profit': [1000, 2000],
+            'max_profit': [2000, 3000],
+            'avg_offers': [50, 30],
+            'first_seen': '2024-01-01T00:00:00',
+            'last_seen': '2024-01-02T00:00:00'
+        })
+        
+        result = ml_engine.get_item_trend_summary('item1')
+        
+        assert result is not None
+        assert result['item_id'] == 'item1'
+        assert result['data_points'] == 12
+        assert result['avg_profit'] == 1500
+        assert result['profit_range'] == 1000
+    
+    def test_generate_recommendations_with_trends(self, ml_engine, sample_df):
+        """Test that recommendations use trend data when available."""
+        # Set up mock trend data
+        ml_engine.trend_data = pd.DataFrame({
+            'item_id': ['item1', 'item3', 'item5'],
+            'data_points': [12, 15, 20],
+            'avg_profit': [1800, 4500, 6500],
+            'min_profit': [1500, 4000, 6000],
+            'max_profit': [2200, 5000, 7500],
+            'avg_flea_price': [9500, 14500, 7500],
+            'avg_trader_price': [11500, 19500, 14000],
+            'avg_offers': [45, 95, 180],
+            'first_seen': '2024-01-01T00:00:00',
+            'last_seen': '2024-01-02T00:00:00'
+        })
+        
+        result = ml_engine.generate_trading_recommendations(
+            sample_df,
+            player_level=15,
+            capital=100000,
+            risk_tolerance='medium',
+            use_trends=True
+        )
+        
+        # Should have trend indicator column
+        if not result.empty and 'trend_indicator' in result.columns:
+            # All trend indicators should be valid emoji
+            valid_indicators = {'📈', '📉', '➡️', '❓'}
+            for indicator in result['trend_indicator']:
+                assert indicator in valid_indicators

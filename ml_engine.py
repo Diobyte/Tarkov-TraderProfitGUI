@@ -7,6 +7,7 @@ This module provides sophisticated ML algorithms for:
 - Item clustering and similarity analysis
 - Risk assessment and portfolio optimization
 - Time-series analysis for optimal trading windows
+- Historical trend learning for improved recommendations over time
 """
 
 import pandas as pd
@@ -39,12 +40,15 @@ class TarkovMLEngine:
     - Item clustering for strategy grouping
     - Profit trend prediction
     - Risk assessment
+    - Historical trend learning for improved recommendations
     
     Attributes:
         scaler: RobustScaler for handling outliers common in game economies.
         price_predictor: Optional predictor model (reserved for future use).
         anomaly_detector: Optional anomaly detection model.
         item_clusterer: Optional clustering model.
+        trend_data: Cached historical trend data for items.
+        profit_stats: Global profit statistics for calibration.
     """
     
     def __init__(self) -> None:
@@ -54,6 +58,10 @@ class TarkovMLEngine:
         self.anomaly_detector: Optional[IsolationForest] = None
         self.item_clusterer: Optional[KMeans] = None
         self._is_fitted: bool = False
+        # Trend learning state
+        self.trend_data: Optional[pd.DataFrame] = None
+        self.profit_stats: Optional[Dict[str, Any]] = None
+        self._last_trend_update: Optional[datetime] = None
     
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -228,6 +236,221 @@ class TarkovMLEngine:
             # Create category popularity score based on average profit
             cat_profits = features.groupby('category')['profit'].mean()
             features['category_avg_profit'] = features['category'].map(cat_profits).fillna(0)
+        
+        return features
+    
+    def load_trend_data(self, hours: Optional[int] = None) -> bool:
+        """
+        Load historical trend data from the database for trend learning.
+        
+        This method fetches aggregated historical data to understand
+        how each item's profit has evolved over time.
+        
+        Args:
+            hours: Hours of history to analyze. Defaults to config.TREND_LOOKBACK_HOURS.
+            
+        Returns:
+            True if trend data was successfully loaded, False otherwise.
+        """
+        if hours is None:
+            hours = config.TREND_LOOKBACK_HOURS
+            
+        try:
+            # Import here to avoid circular dependency
+            from database import get_item_trend_data, get_profit_statistics
+            
+            # Get trend data
+            trend_rows = get_item_trend_data(item_ids=None, hours=hours)
+            
+            if not trend_rows:
+                logger.warning("No trend data available in database")
+                return False
+            
+            # Convert to DataFrame
+            self.trend_data = pd.DataFrame(trend_rows, columns=[
+                'item_id', 'data_points', 'avg_profit', 'min_profit', 'max_profit',
+                'avg_flea_price', 'avg_trader_price', 'avg_offers',
+                'first_seen', 'last_seen'
+            ])
+            
+            # Get global profit statistics
+            self.profit_stats = get_profit_statistics(hours=hours)
+            
+            self._last_trend_update = datetime.now()
+            
+            total_records = self.profit_stats.get('total_records', 0) if self.profit_stats else 0
+            logger.info(f"Loaded trend data for {len(self.trend_data)} items "
+                       f"({total_records} records)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load trend data: {e}")
+            return False
+    
+    def calculate_trend_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enrich current data with historical trend features.
+        
+        Uses the loaded trend data to add features like:
+        - Profit trend direction (improving/declining/stable)
+        - Historical volatility
+        - Consistency score (how reliably profitable)
+        - Momentum indicators
+        
+        Args:
+            df: Current market data DataFrame with item_id column.
+            
+        Returns:
+            DataFrame with added trend-based feature columns.
+        """
+        if df.empty:
+            return df
+            
+        features = df.copy()
+        
+        # If no trend data loaded, try to load it
+        if self.trend_data is None or len(self.trend_data) == 0:
+            self.load_trend_data()
+        
+        # If still no trend data, add default values
+        if self.trend_data is None or len(self.trend_data) == 0:
+            features['profit_trend'] = 0.0
+            features['historical_volatility'] = 0.0
+            features['consistency_score'] = 50.0
+            features['trend_confidence'] = 0.0
+            features['trend_direction'] = 'Unknown'
+            return features
+        
+        # Merge trend data with current data
+        trend_df = self.trend_data.copy()
+        
+        # Calculate trend metrics per item
+        # Profit volatility (normalized std dev)
+        trend_df['profit_range'] = trend_df['max_profit'] - trend_df['min_profit']
+        trend_df['historical_volatility'] = np.where(
+            trend_df['avg_profit'].abs() > 1,
+            trend_df['profit_range'] / trend_df['avg_profit'].abs(),
+            0
+        )
+        
+        # Calculate consistency score (0-100)
+        # Items that are always profitable and have low volatility score higher
+        min_consistent = (trend_df['min_profit'] > 0).astype(float) * 30
+        low_volatility = (1 - np.clip(trend_df['historical_volatility'], 0, 1)) * 40
+        has_data = np.clip(trend_df['data_points'] / config.TREND_MIN_DATA_POINTS, 0, 1) * 30
+        trend_df['consistency_score'] = min_consistent + low_volatility + has_data
+        
+        # Trend confidence based on data points
+        trend_df['trend_confidence'] = np.clip(
+            trend_df['data_points'] / (config.TREND_MIN_DATA_POINTS * 2),
+            0, 1
+        ) * 100
+        
+        # Merge with current data
+        features = features.merge(
+            trend_df[['item_id', 'avg_profit', 'historical_volatility', 
+                     'consistency_score', 'trend_confidence', 'data_points',
+                     'min_profit', 'max_profit']].rename(columns={
+                         'avg_profit': 'historical_avg_profit',
+                         'data_points': 'historical_data_points',
+                         'min_profit': 'historical_min_profit',
+                         'max_profit': 'historical_max_profit'
+                     }),
+            on='item_id',
+            how='left'
+        )
+        
+        # Fill missing values for items without history
+        features['historical_volatility'] = features['historical_volatility'].fillna(0.5)
+        features['consistency_score'] = features['consistency_score'].fillna(50)
+        features['trend_confidence'] = features['trend_confidence'].fillna(0)
+        features['historical_data_points'] = features['historical_data_points'].fillna(0)
+        features['historical_avg_profit'] = features['historical_avg_profit'].fillna(features['profit'])
+        
+        # Calculate profit trend (current vs historical)
+        # Positive = improving, Negative = declining
+        features['profit_trend'] = np.where(
+            features['historical_avg_profit'].abs() > 1,
+            (features['profit'] - features['historical_avg_profit']) / features['historical_avg_profit'].abs(),
+            0
+        )
+        
+        # Classify trend direction
+        def classify_trend(trend_val: float) -> str:
+            if trend_val > config.TREND_IMPROVEMENT_THRESHOLD:
+                return 'Improving'
+            elif trend_val < -config.TREND_IMPROVEMENT_THRESHOLD:
+                return 'Declining'
+            else:
+                return 'Stable'
+        
+        features['trend_direction'] = features['profit_trend'].apply(classify_trend)
+        
+        # Trend-adjusted opportunity score
+        # Bonus for improving trends, penalty for declining
+        features['trend_bonus'] = np.where(
+            features['profit_trend'] > config.TREND_IMPROVEMENT_THRESHOLD,
+            features['profit_trend'] * config.TREND_PROFIT_MOMENTUM_WEIGHT * 100,
+            np.where(
+                features['profit_trend'] < -config.TREND_IMPROVEMENT_THRESHOLD,
+                features['profit_trend'] * config.TREND_PROFIT_MOMENTUM_WEIGHT * 100,
+                0
+            )
+        )
+        
+        # Consistency bonus
+        features['consistency_bonus'] = (
+            (features['consistency_score'] - 50) / 50  # Normalize to -1 to 1
+        ) * config.TREND_CONSISTENCY_BONUS * 100
+        
+        # Volatility penalty
+        features['volatility_penalty'] = (
+            features['historical_volatility'].clip(0, 1) 
+            * config.TREND_VOLATILITY_PENALTY * 100
+        )
+        
+        return features
+    
+    def get_trend_enhanced_score(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate an enhanced opportunity score that incorporates historical trends.
+        
+        This combines the base ML opportunity score with trend-based adjustments
+        to favor items that are consistently profitable and improving.
+        
+        Args:
+            df: DataFrame with market data.
+            
+        Returns:
+            DataFrame with trend_enhanced_score column added.
+        """
+        if df.empty:
+            return df
+        
+        # Get base ML score first
+        features = self.calculate_opportunity_score_ml(df)
+        
+        # Add trend features
+        features = self.calculate_trend_features(features)
+        
+        # Calculate trend-enhanced score
+        base_score = features.get('ml_opportunity_score', 50)
+        trend_bonus = features.get('trend_bonus', 0)
+        consistency_bonus = features.get('consistency_bonus', 0)
+        volatility_penalty = features.get('volatility_penalty', 0)
+        
+        # Weight based on how much historical data we have
+        trend_weight = features.get('trend_confidence', 0) / 100
+        
+        # Blend base score with trend adjustments
+        raw_enhanced = (
+            base_score * (1 - trend_weight * 0.3) +  # Reduce base score weight as trend confidence grows
+            (base_score + trend_bonus + consistency_bonus - volatility_penalty) * (trend_weight * 0.3)
+        )
+        features['trend_enhanced_score'] = np.clip(raw_enhanced, 0, 100)
+        
+        # Rank by enhanced score
+        features['trend_rank'] = features['trend_enhanced_score'].rank(ascending=False)
         
         return features
     
@@ -718,18 +941,22 @@ class TarkovMLEngine:
     def generate_trading_recommendations(self, df: pd.DataFrame, 
                                          player_level: int = 15,
                                          capital: int = 1000000,
-                                         risk_tolerance: str = 'medium') -> pd.DataFrame:
+                                         risk_tolerance: str = 'medium',
+                                         use_trends: bool = True) -> pd.DataFrame:
         """
         Generate personalized trading recommendations based on player profile.
         
         Applies all analysis methods and filters results based on player's
-        level, available capital, and risk tolerance preferences.
+        level, available capital, and risk tolerance preferences. When trend
+        learning is enabled, recommendations improve over time as more
+        historical data is collected.
         
         Args:
             df: DataFrame with market data for analysis.
             player_level: Player's current level (affects flea market access at 15).
             capital: Available roubles for trading.
             risk_tolerance: 'low', 'medium', or 'high' risk preference.
+            use_trends: Whether to use historical trend learning (default True).
             
         Returns:
             DataFrame of recommended items sorted by recommendation score,
@@ -738,8 +965,13 @@ class TarkovMLEngine:
         if df.empty:
             return df
         
-        # Apply all analyses
-        features = self.calculate_opportunity_score_ml(df)
+        # Apply all analyses with optional trend learning
+        if use_trends:
+            # Use trend-enhanced scoring
+            features = self.get_trend_enhanced_score(df)
+        else:
+            features = self.calculate_opportunity_score_ml(df)
+            
         features = self.detect_arbitrage_anomalies(features)
         features = self.calculate_risk_score(features)
         features = self.cluster_items(features)
@@ -759,13 +991,25 @@ class TarkovMLEngine:
         features['max_units'] = (capital // features['flea_price']).clip(lower=0)
         features['potential_profit'] = features['max_units'] * features['profit']
         
-        # Final recommendation score
-        features['rec_score'] = (
-            features['ml_opportunity_score'] * 0.4 +
-            (100 - features['risk_score']) * 0.3 +
-            features['cluster_confidence'] * 100 * 0.15 +
-            features.get('liquidity_score', 50) * 0.15
+        # Final recommendation score - now uses trend-enhanced score when available
+        base_score = features.get('trend_enhanced_score', features.get('ml_opportunity_score', 50))
+        
+        # Add trend bonuses to final score
+        trend_direction_bonus = np.where(
+            features.get('trend_direction', 'Unknown') == 'Improving', 5,
+            np.where(features.get('trend_direction', 'Unknown') == 'Declining', -5, 0)
         )
+        
+        consistency_factor = features.get('consistency_score', 50) / 100  # 0-1 scale
+        
+        features['rec_score'] = (
+            base_score * 0.35 +
+            (100 - features['risk_score']) * 0.25 +
+            features['cluster_confidence'] * 100 * 0.10 +
+            features.get('liquidity_score', 50) * 0.15 +
+            consistency_factor * 15 +  # Up to 15 points for consistency
+            trend_direction_bonus  # ±5 points for trend
+        ).clip(0, 100)
         
         # Filter to accessible items within risk tolerance AND sufficient volume
         # This filters out unreliable 1-5 offer items
@@ -780,14 +1024,98 @@ class TarkovMLEngine:
             has_volume
         ].copy()
         
-        # Add recommendation tier
+        # Add recommendation tier with enhanced thresholds
         recommended['rec_tier'] = pd.cut(
             recommended['rec_score'],
-            bins=[0, 50, 70, 85, 100],
+            bins=[0, 45, 65, 80, 100],
             labels=['Consider', 'Good', 'Great', 'Excellent']
         )
         
+        # Add trend indicator for UI
+        if 'trend_direction' in recommended.columns:
+            recommended['trend_indicator'] = recommended['trend_direction'].map({
+                'Improving': '📈',
+                'Declining': '📉', 
+                'Stable': '➡️',
+                'Unknown': '❓'
+            }).fillna('❓')
+        
         return recommended.sort_values('rec_score', ascending=False)
+    
+    def get_trend_learning_status(self) -> Dict[str, Any]:
+        """
+        Get the current status of trend learning.
+        
+        Returns information about how much historical data is available
+        and how it's being used to improve recommendations.
+        
+        Returns:
+            Dict with trend learning status including:
+                - enabled: Whether trend learning is active
+                - items_with_history: Number of items with trend data
+                - total_data_points: Total historical records
+                - last_update: When trend data was last loaded
+                - avg_data_points: Average data points per item
+                - learning_quality: Overall quality score (0-100)
+        """
+        status = {
+            'enabled': self.trend_data is not None and len(self.trend_data) > 0,
+            'items_with_history': 0,
+            'total_data_points': 0,
+            'last_update': None,
+            'avg_data_points': 0.0,
+            'learning_quality': 0,
+            'profit_stats': None
+        }
+        
+        if self.trend_data is not None and len(self.trend_data) > 0:
+            status['items_with_history'] = len(self.trend_data)
+            status['total_data_points'] = int(self.trend_data['data_points'].sum())
+            status['avg_data_points'] = float(self.trend_data['data_points'].mean())
+            status['last_update'] = self._last_trend_update
+            
+            # Learning quality based on data coverage
+            # More data points = better learning
+            min_good_data = config.TREND_MIN_DATA_POINTS * 2
+            items_with_good_data = (self.trend_data['data_points'] >= min_good_data).sum()
+            status['learning_quality'] = min(100, int(
+                (items_with_good_data / max(len(self.trend_data), 1)) * 100
+            ))
+        
+        if self.profit_stats:
+            status['profit_stats'] = self.profit_stats
+        
+        return status
+    
+    def get_item_trend_summary(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get trend summary for a specific item.
+        
+        Args:
+            item_id: The item ID to get trend data for.
+            
+        Returns:
+            Dict with item trend info or None if not found.
+        """
+        if self.trend_data is None or len(self.trend_data) == 0:
+            return None
+        
+        item_trend = self.trend_data[self.trend_data['item_id'] == item_id]
+        if item_trend.empty:
+            return None
+        
+        row = item_trend.iloc[0]
+        return {
+            'item_id': item_id,
+            'data_points': int(row['data_points']),
+            'avg_profit': float(row['avg_profit']),
+            'min_profit': float(row['min_profit']),
+            'max_profit': float(row['max_profit']),
+            'profit_range': float(row['max_profit'] - row['min_profit']),
+            'avg_offers': float(row.get('avg_offers', 0)),
+            'first_seen': row.get('first_seen'),
+            'last_seen': row.get('last_seen')
+        }
 
 
 # Singleton instance

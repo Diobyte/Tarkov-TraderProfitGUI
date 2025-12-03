@@ -24,6 +24,14 @@ ML_ESTIMATORS: int = 100  # Number of estimators for ensemble models
 ML_MIN_ITEMS_FOR_ANALYSIS: int = 10  # Minimum items required for ML analysis
 ML_MIN_ITEMS_FOR_ANOMALY: int = 20  # Minimum items for anomaly detection
 
+# Trend Learning Configuration
+TREND_LOOKBACK_HOURS: int = 24  # Hours of history to analyze for trends
+TREND_MIN_DATA_POINTS: int = 6  # Minimum data points for valid trend
+TREND_PROFIT_MOMENTUM_WEIGHT: float = 0.20  # Weight of profit trend in scoring
+TREND_VOLATILITY_PENALTY: float = 0.15  # Penalty factor for high volatility items
+TREND_CONSISTENCY_BONUS: float = 0.25  # Bonus for consistently profitable items
+TREND_IMPROVEMENT_THRESHOLD: float = 0.05  # 5% improvement = positive trend
+
 # Volume/Offers Thresholds
 VOLUME_MIN_FOR_RECOMMENDATION: int = 5  # Minimum offers required to recommend
 VOLUME_LOW_THRESHOLD: int = 10  # Below this = low volume/hard to buy

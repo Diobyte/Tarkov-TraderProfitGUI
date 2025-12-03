@@ -9,7 +9,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional, Any, Callable, Union
+from typing import List, Tuple, Optional, Any, Callable, Union, Dict
 from functools import wraps
 
 import config
@@ -17,7 +17,8 @@ import config
 __all__ = [
     'init_db', 'save_prices_batch', 'get_latest_prices', 'get_item_history',
     'get_market_trends', 'get_all_prices', 'cleanup_old_data', 'get_latest_timestamp',
-    'clear_all_data', 'parse_timestamp', 'retry_db_op', 'DB_NAME'
+    'clear_all_data', 'parse_timestamp', 'retry_db_op', 'DB_NAME',
+    'get_item_trend_data', 'get_profit_statistics'
 ]
 
 # Ensure DB is always created in the same directory as this script
@@ -410,3 +411,148 @@ def clear_all_data() -> None:
         logging.warning("Could not VACUUM database (locked?), skipping.")
         
     conn.close()
+
+
+@retry_db_op()
+def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -> List[Tuple]:
+    """
+    Get historical trend data for specified items or all items.
+    
+    Returns aggregated statistics per item over the time window including:
+    - Count of data points
+    - Average, min, max, stddev of profit
+    - First and last observed profit (for trend direction)
+    - Average offer count
+    
+    Args:
+        item_ids: Optional list of item IDs to filter. If None, returns all items.
+        hours: Number of hours to look back for trend data.
+        
+    Returns:
+        List of tuples with trend statistics per item.
+    """
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    c = conn.cursor()
+    
+    # Get anchor time from latest data
+    c.execute('SELECT MAX(timestamp) FROM prices')
+    result = c.fetchone()
+    
+    anchor_time = datetime.now()
+    if result and result[0]:
+        parsed = parse_timestamp(result[0])
+        if parsed:
+            anchor_time = parsed
+
+    time_threshold = anchor_time - timedelta(hours=hours)
+    
+    if item_ids:
+        placeholders = ','.join('?' * len(item_ids))
+        query = f'''
+            SELECT 
+                item_id,
+                COUNT(*) as data_points,
+                AVG(profit) as avg_profit,
+                MIN(profit) as min_profit,
+                MAX(profit) as max_profit,
+                AVG(flea_price) as avg_flea_price,
+                AVG(trader_price) as avg_trader_price,
+                AVG(last_offer_count) as avg_offers,
+                MIN(timestamp) as first_seen,
+                MAX(timestamp) as last_seen
+            FROM prices
+            WHERE timestamp > ? AND item_id IN ({placeholders})
+            GROUP BY item_id
+            HAVING COUNT(*) >= 2
+        '''
+        c.execute(query, [time_threshold.isoformat()] + item_ids)
+    else:
+        c.execute('''
+            SELECT 
+                item_id,
+                COUNT(*) as data_points,
+                AVG(profit) as avg_profit,
+                MIN(profit) as min_profit,
+                MAX(profit) as max_profit,
+                AVG(flea_price) as avg_flea_price,
+                AVG(trader_price) as avg_trader_price,
+                AVG(last_offer_count) as avg_offers,
+                MIN(timestamp) as first_seen,
+                MAX(timestamp) as last_seen
+            FROM prices
+            WHERE timestamp > ?
+            GROUP BY item_id
+            HAVING COUNT(*) >= 2
+        ''', (time_threshold.isoformat(),))
+    
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+@retry_db_op()
+def get_profit_statistics(hours: int = 24) -> Dict[str, Any]:
+    """
+    Get overall profit statistics across all items for a time period.
+    
+    This helps calibrate the ML engine by understanding the distribution
+    of profits in the dataset.
+    
+    Args:
+        hours: Number of hours to analyze.
+        
+    Returns:
+        Dict with overall statistics including total items, profit distribution, etc.
+    """
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    c = conn.cursor()
+    
+    # Get anchor time
+    c.execute('SELECT MAX(timestamp) FROM prices')
+    result = c.fetchone()
+    
+    anchor_time = datetime.now()
+    if result and result[0]:
+        parsed = parse_timestamp(result[0])
+        if parsed:
+            anchor_time = parsed
+
+    time_threshold = anchor_time - timedelta(hours=hours)
+    
+    c.execute('''
+        SELECT 
+            COUNT(DISTINCT item_id) as unique_items,
+            COUNT(*) as total_records,
+            AVG(profit) as avg_profit,
+            MIN(profit) as min_profit,
+            MAX(profit) as max_profit,
+            AVG(flea_price) as avg_flea_price,
+            AVG(last_offer_count) as avg_offers
+        FROM prices
+        WHERE timestamp > ?
+    ''', (time_threshold.isoformat(),))
+    
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            'unique_items': row[0] or 0,
+            'total_records': row[1] or 0,
+            'avg_profit': row[2] or 0,
+            'min_profit': row[3] or 0,
+            'max_profit': row[4] or 0,
+            'avg_flea_price': row[5] or 0,
+            'avg_offers': row[6] or 0,
+            'data_hours': hours
+        }
+    return {
+        'unique_items': 0,
+        'total_records': 0,
+        'avg_profit': 0,
+        'min_profit': 0,
+        'max_profit': 0,
+        'avg_flea_price': 0,
+        'avg_offers': 0,
+        'data_hours': hours
+    }
