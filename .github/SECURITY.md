@@ -7,7 +7,7 @@ Please report vulnerabilities responsibly.
 
 Supported targets:
 
-- Python 3.10–3.12
+- Python 3.10–3.13
 - Latest `main` branch of this repository
 
 We aim to acknowledge within 5 business days and provide a remediation plan or fix within 30 days for high-severity issues.

@@ -173,7 +173,7 @@ function Get-PythonPath {
 }
 
 # --- Step 1: Check for Compatible Python (3.11 - 3.13) ---
-$PreferredVersion = "3.12"
+$PreferredVersion = "3.13"
 $CompatibleVersions = @("3.13", "3.12", "3.11", "3.10")
 $PythonPath = $null
 
@@ -209,8 +209,8 @@ if (-not $PythonPath) {
     
     if (Get-Command "winget" -ErrorAction SilentlyContinue) {
         try {
-            # Install Python 3.12
-            winget install -e --id Python.Python.3.12 --scope user --accept-source-agreements --accept-package-agreements
+            # Install Python 3.13
+            winget install -e --id Python.Python.3.13 --scope user --accept-source-agreements --accept-package-agreements
             
             # Refresh Environment Variables (User & System) correctly
             $MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -221,9 +221,9 @@ if (-not $PythonPath) {
             # Re-check via standard detection
             $PythonPath = Get-PythonPath -Version $PreferredVersion
 
-            # Fallback: Check default install location for Python 3.12
+            # Fallback: Check default install location for Python 3.13
             if (-not $PythonPath) {
-                $DefaultInstall = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+                $DefaultInstall = "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe"
                 if (Test-Path $DefaultInstall) {
                     $PythonPath = $DefaultInstall
                 }
@@ -238,7 +238,7 @@ if (-not $PythonPath) {
 
 if (-not $PythonPath) {
     Write-Host "[CRITICAL] Could not find or install Python." -ForegroundColor Red
-    Write-Host "Please manually install Python 3.12 from https://www.python.org/downloads/"
+    Write-Host "Please manually install Python 3.13 from https://www.python.org/downloads/"
     Read-Host "Press Enter to exit"
     exit 1
 }

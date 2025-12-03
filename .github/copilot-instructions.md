@@ -11,7 +11,7 @@ This repository contains a Python-based tool for analyzing Escape from Tarkov ma
 
 ## Coding Standards
 
-- **Python Version**: 3.10+ (Target 3.12).
+- **Python Version**: 3.10+ (Target 3.13).
 - **Type Hinting**: MUST use type hints (`typing.List`, `typing.Optional`, etc.) for all function arguments and return values.
 - **Error Handling**: Use `try/except` blocks generously, especially around database operations and API calls. Log errors using the `logging` module, not `print`.
 - **Database**: Always use the `@retry_db_op` decorator from `database.py` for any DB interaction to handle SQLite locking (WAL mode is enabled).

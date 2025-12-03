@@ -64,7 +64,7 @@ function Get-PythonPath {
 }
 
 # --- Step 1: Check for Compatible Python (3.11 - 3.13) ---
-$PreferredVersion = "3.12"
+$PreferredVersion = "3.13"
 $CompatibleVersions = @("3.13", "3.12", "3.11", "3.10")
 $PythonPath = $null
 

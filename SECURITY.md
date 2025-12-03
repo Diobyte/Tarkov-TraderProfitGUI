@@ -6,7 +6,7 @@ This project values responsible disclosure and welcomes reports of security vuln
 
 We actively support and patch the following versions:
 
-- Python runtime: 3.10, 3.11, 3.12
+- Python runtime: 3.10, 3.11, 3.12, 3.13
 - App components: latest `main` branch of this repository
 
 Older Python versions (<3.10) and forks or derivatives are out of scope.

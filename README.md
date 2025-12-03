@@ -7,7 +7,7 @@ A powerful, ML-enhanced dashboard for **Escape from Tarkov** that identifies pro
 ![Dashboard Demo](tarkov.gif)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12-blue)
+![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Version](https://img.shields.io/badge/version-3.0.0-green)
 ![Docker](https://img.shields.io/badge/docker-ready-blue)
@@ -60,7 +60,7 @@ Double-click **`run.bat`** — that's it!
 
 The launcher will:
 
-1. ✅ Check for Python (installs Python 3.12 via Winget if missing)
+1. ✅ Check for Python (installs Python 3.13 via Winget if missing)
 2. ✅ Create a virtual environment (`.venv`)
 3. ✅ Install all dependencies automatically
 4. ✅ Start the data collector in the background
@@ -720,7 +720,7 @@ streamlit run app.py
 
 The launcher should install Python automatically. If it fails:
 
-1. Install [Python 3.12](https://www.python.org/downloads/) manually
+1. Install [Python 3.13](https://www.python.org/downloads/) manually
 2. During installation, check **"Add Python to PATH"**
 3. Re-run `run.bat`
 
