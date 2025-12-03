@@ -258,6 +258,12 @@ CATEGORY_LOCKS: Dict[str, int] = {
     
     # === WEAPON MODS (Functional Mods) ===
     "Foregrip": 20,
+    "Stock": 20,
+    "Stock (folding)": 20,  # API uses folding stock variant
+    "Chassis": 20,  # Stock/chassis systems
+    "Charging handle": 20,
+    "Magazine": 25,
+    "Cylinder Magazine": 25,  # Revolver magazines
     "Auxiliary part": 25,
     "Auxiliary Mod": 25,  # API uses "Auxiliary Mod"
     "Flashlight": 25,
@@ -271,6 +277,15 @@ CATEGORY_LOCKS: Dict[str, int] = {
     "Comb. muzzle device": 20,  # API combined muzzle device
     "Suppressor": 25,
     "Silencer": 25,
+    
+    # === OPTICS/SIGHTS ===
+    "Assault scope": 25,
+    "Reflex sight": 25,  # Collimators
+    "Compact reflex sight": 25,  # Compact collimators
+    "Scope": 25,  # Optics
+    "Special scope": 25,  # Special purpose sights (thermals, NV scopes)
+    "Sights": 25,  # General sights category
+    "Ironsight": 25,  # Iron sights
     
     # === AMMO ===
     "Ammo pack": 25,
