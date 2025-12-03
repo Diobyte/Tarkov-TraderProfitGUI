@@ -159,8 +159,13 @@ class ModelPersistence:
             category: Item category
             trader: Best trader name
         """
-        if not item_id or not isinstance(item_id, str):  # Skip empty or invalid item IDs
+        # Skip empty or invalid item IDs
+        if not item_id or not isinstance(item_id, str) or not item_id.strip():
             return
+        
+        # Sanitize category and trader
+        category = str(category) if category else 'Unknown'
+        trader = str(trader) if trader else 'Unknown'
         
         # Sanitize inputs to avoid NaN/inf issues
         import math

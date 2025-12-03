@@ -100,7 +100,7 @@ class TestDatabase(unittest.TestCase):
         # Retrieve
         latest = database.get_latest_prices()
         self.assertIsNotNone(latest)
-        assert latest is not None  # Help type checker understand
+        self.assertIsInstance(latest, list)
         self.assertEqual(len(latest), 1)
         self.assertEqual(latest[0][1], 'Test Item') # Name
         self.assertEqual(latest[0][5], 5000) # Profit
@@ -128,13 +128,13 @@ class TestDatabase(unittest.TestCase):
         # Retrieve
         latest = database.get_latest_prices()
         self.assertIsNotNone(latest)
-        assert latest is not None  # Help type checker understand
+        self.assertIsInstance(latest, list)
         self.assertGreaterEqual(len(latest), 1)
         
         # Find our item
         enhanced_item = next((r for r in latest if r[0] == '2'), None)
         self.assertIsNotNone(enhanced_item)
-        assert enhanced_item is not None  # Help type checker understand
+        self.assertIsInstance(enhanced_item, tuple)
         self.assertEqual(enhanced_item[1], 'Enhanced Test Item')  # Name
         self.assertEqual(enhanced_item[5], 5000)  # Profit
         self.assertEqual(enhanced_item[18], 'ETI')  # Short name

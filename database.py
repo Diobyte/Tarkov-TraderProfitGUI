@@ -9,7 +9,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional, Any, Callable, Union, Dict
+from typing import List, Tuple, Optional, Any, Callable, Dict
 from functools import wraps
 
 import config
@@ -305,7 +305,7 @@ def save_prices_batch(items: List[Tuple]) -> None:
     conn.close()
 
 @retry_db_op()
-def get_latest_prices() -> List[Tuple]:
+def get_latest_prices() -> List[Tuple[Any, ...]]:
     """Get the latest prices for all items.
     
     Uses a lookback window to capture items from recent collection cycles,
@@ -313,6 +313,7 @@ def get_latest_prices() -> List[Tuple]:
     
     Returns:
         List of tuples containing price data for each item, sorted by profit.
+        Empty list if no data available.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -373,7 +374,7 @@ def get_latest_prices() -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_item_history(item_id: str) -> List[Tuple]:
+def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
     """Get the price history for a specific item.
     
     Args:
@@ -381,6 +382,7 @@ def get_item_history(item_id: str) -> List[Tuple]:
         
     Returns:
         List of tuples with (timestamp, flea_price, trader_price, profit).
+        Empty list if no history found.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -395,7 +397,7 @@ def get_item_history(item_id: str) -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_market_trends(hours: int = 6) -> List[Tuple]:
+def get_market_trends(hours: int = 6) -> List[Tuple[str, float, int, int, int]]:
     """
     Calculate volatility and average profit over the last X hours.
     
@@ -404,6 +406,7 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
         
     Returns:
         List of tuples with (item_id, avg_profit, min_profit, max_profit, data_points).
+        Empty list if no data found.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -439,12 +442,13 @@ def get_market_trends(hours: int = 6) -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def get_all_prices() -> List[Tuple]:
+def get_all_prices() -> List[Tuple[Any, ...]]:
     """Get all prices from the database.
     
     Returns:
         List of all price records as tuples with (item_id, name, flea_price,
         trader_price, trader_name, profit, timestamp).
+        Empty list if no data found.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
@@ -472,10 +476,11 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     c = conn.cursor()
     cutoff_date = datetime.now() - timedelta(days=days)
     c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date.isoformat(),))
-    deleted_count = c.rowcount if c.rowcount is not None else 0  # Ensure we return int, not None
+    # rowcount can be -1 if no count is available, so ensure we return non-negative int
+    deleted_count = max(0, c.rowcount) if c.rowcount is not None else 0
     conn.commit()
     
-    # Only vacuum if explicitly requested and we deleted something
+    # Only vacuum if explicitly requested and we deleted something significant
     if vacuum and deleted_count > 1000:
         try:
             logging.info("Starting database VACUUM...")
@@ -533,7 +538,7 @@ def clear_all_data() -> None:
 
 
 @retry_db_op()
-def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -> List[Tuple]:
+def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -> List[Tuple[Any, ...]]:
     """
     Get historical trend data for specified items or all items.
     
@@ -550,6 +555,7 @@ def get_item_trend_data(item_ids: Optional[List[str]] = None, hours: int = 24) -
     Returns:
         List of tuples with (item_id, data_points, avg_profit, min_profit, max_profit,
         avg_flea_price, avg_trader_price, avg_offers, first_seen, last_seen).
+        Empty list if no data found.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()

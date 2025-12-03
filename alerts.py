@@ -142,11 +142,16 @@ class AlertManager:
             try:
                 with open(self.alerts_file, 'r', encoding='utf-8') as f:
                     data: Dict[str, Any] = json.load(f)
+                    if not isinstance(data, dict):
+                        raise json.JSONDecodeError("Expected dict", "", 0)
                     for alert_id, alert_data in data.items():
                         try:
-                            self._alerts[alert_id] = Alert.from_dict(alert_data)
-                        except TypeError:
-                            logger.warning("Skipping invalid alert entry while loading alerts")
+                            if isinstance(alert_data, dict):
+                                self._alerts[alert_id] = Alert.from_dict(alert_data)
+                            else:
+                                logger.warning("Skipping non-dict alert entry: %s", alert_id)
+                        except (TypeError, KeyError) as e:
+                            logger.warning("Skipping invalid alert entry %s: %s", alert_id, e)
                 logger.info("Loaded %d alerts", len(self._alerts))
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning("Failed to load alerts, recreating defaults: %s", e)
@@ -161,11 +166,14 @@ class AlertManager:
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     history: List[Dict[str, Any]] = json.load(f)
+                if not isinstance(history, list):
+                    raise json.JSONDecodeError("Expected list", "", 0)
                 # Keep only last N entries based on config
-                max_history = max(config.ALERT_MAX_HISTORY, 1)
+                max_history = max(getattr(config, 'ALERT_MAX_HISTORY', 500), 1)
                 self._history = history[-max_history:]
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning("Failed to load alert history, starting fresh: %s", e)
+                self._history = []
                 self._history = []
     
     def _create_default_alerts(self) -> None:

@@ -7,11 +7,15 @@ using the pattern TARKOV_{CONSTANT_NAME}.
 Example:
     export TARKOV_COLLECTION_INTERVAL_MINUTES=10
     export TARKOV_DATA_RETENTION_DAYS=14
+
+Note:
+    Values are validated and logged when invalid values are provided.
+    Invalid values fall back to defaults to ensure application stability.
 """
 
 import os
 import logging
-from typing import Dict
+from typing import Dict, Final
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +50,10 @@ def _get_env_str(key: str, default: str) -> str:
 
 
 # API Configuration
-API_URL: str = _get_env_str('API_URL', 'https://api.tarkov.dev/graphql')
-COLLECTION_INTERVAL_MINUTES: int = _get_env_int('COLLECTION_INTERVAL_MINUTES', 5)
-DATA_RETENTION_DAYS: int = _get_env_int('DATA_RETENTION_DAYS', 7)
-API_TIMEOUT_SECONDS: int = _get_env_int('API_TIMEOUT_SECONDS', 30)
+API_URL: Final[str] = _get_env_str('API_URL', 'https://api.tarkov.dev/graphql')
+COLLECTION_INTERVAL_MINUTES: Final[int] = _get_env_int('COLLECTION_INTERVAL_MINUTES', 5)
+DATA_RETENTION_DAYS: Final[int] = _get_env_int('DATA_RETENTION_DAYS', 7)
+API_TIMEOUT_SECONDS: Final[int] = _get_env_int('API_TIMEOUT_SECONDS', 30)
 
 # Database Configuration
 DB_LOOKBACK_WINDOW_MINUTES: int = _get_env_int('DB_LOOKBACK_WINDOW_MINUTES', 45)

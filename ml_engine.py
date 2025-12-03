@@ -393,6 +393,8 @@ class TarkovMLEngine:
         
         # Classify trend direction
         def classify_trend(trend_val: float) -> str:
+            if pd.isna(trend_val) or np.isinf(trend_val):
+                return 'Unknown'
             if trend_val > config.TREND_IMPROVEMENT_THRESHOLD:
                 return 'Improving'
             elif trend_val < -config.TREND_IMPROVEMENT_THRESHOLD:
@@ -943,16 +945,20 @@ class TarkovMLEngine:
                     rank = int(rank_val.iloc[0])  # type: ignore[union-attr]
                 elif hasattr(rank_val, 'item'):
                     rank = int(rank_val.item())  # type: ignore[union-attr]
+                elif isinstance(rank_val, (int, float, np.number)):
+                    rank = int(rank_val)
                 else:
-                    rank = int(rank_val)  # type: ignore[arg-type]
+                    rank = 999
                     
                 if hasattr(profit_val, 'iloc'):
                     profit = float(profit_val.iloc[0])  # type: ignore[union-attr]
                 elif hasattr(profit_val, 'item'):
                     profit = float(profit_val.item())  # type: ignore[union-attr]
+                elif isinstance(profit_val, (int, float, np.number)):
+                    profit = float(profit_val)
                 else:
-                    profit = float(profit_val)  # type: ignore[arg-type]
-            except (ValueError, AttributeError, TypeError):
+                    profit = 0.0
+            except (ValueError, AttributeError, TypeError, IndexError):
                 rank = 999
                 profit = 0.0
             

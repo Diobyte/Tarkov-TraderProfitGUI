@@ -121,13 +121,14 @@ class DataExporter:
         
         try:
             # Limit sheet name to 31 characters (Excel limit)
-            safe_sheet_name = sheet_name[:31] if len(sheet_name) > 31 else sheet_name
+            safe_sheet_name = str(sheet_name)[:31] if sheet_name else "Data"
             # Also ensure sheet name doesn't contain invalid characters
             invalid_chars = [':', '\\', '/', '?', '*', '[', ']', "'", '"']
             for char in invalid_chars:
                 safe_sheet_name = safe_sheet_name.replace(char, '_')
-            # Ensure sheet name is not empty after sanitization
-            if not safe_sheet_name.strip():
+            # Sheet name cannot start or end with apostrophe, and cannot be empty
+            safe_sheet_name = safe_sheet_name.strip().strip("'")
+            if not safe_sheet_name:
                 safe_sheet_name = "Data"
             df.to_excel(filename, index=False, sheet_name=safe_sheet_name, engine='openpyxl')
             logger.info("Exported %d rows to %s", len(df), filename)

@@ -11,13 +11,29 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculates derived metrics for the prices dataframe.
     
-    Note: Creates a copy to avoid SettingWithCopyWarning.
+    Creates a copy of the input DataFrame to avoid SettingWithCopyWarning
+    and adds the following calculated columns:
+    
+    - roi: Return on Investment (profit/flea_price * 100)
+    - slots: Total inventory slots (width * height)
+    - profit_per_slot: Profit divided by inventory slots
+    - discount_from_avg: Difference between avg_24h_price and flea_price
+    - discount_percent: Discount as percentage of avg_24h_price
+    - profit_per_kg: Profit divided by item weight
+    - flea_to_base_ratio: Ratio of flea_price to base_price (if available)
+    - price_range_24h: High - Low price over 24h (if available)
+    - price_range_percent: Price range as percentage of avg
+    - liquidity_tier: Categorical tier based on offer count
+    - opportunity_score: Combined score based on multiple factors
     
     Args:
         df: DataFrame with price data including profit, flea_price, width, height, etc.
         
     Returns:
-        DataFrame with added calculated metrics (roi, slots, profit_per_slot, etc.).
+        DataFrame with added calculated metrics. Returns empty DataFrame if input is empty.
+        
+    Note:
+        Division by zero is handled gracefully by replacing with 0 or inf as appropriate.
     """
     if df.empty:
         return df
@@ -118,6 +134,7 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
     Returns:
         The fee in rubles
     """
+    # Validate inputs - base_price must be positive for meaningful calculation
     if base_price <= 0 or sell_price <= 0:
         return 0
     
@@ -127,15 +144,15 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
     
     # Tarkov fee formula (simplified approximation)
     # Real formula is more complex but this is a reasonable approximation
-    vo = base_price
-    vr = sell_price
+    vo = float(base_price)  # Ensure float division
+    vr = float(sell_price)
     
     # Base fee rate
     try:
         if vr >= vo:
             # Selling above base price
             q = 1.0
-            ratio = vr / vo if vo > 0 else 1.0
+            ratio = vr / vo  # Safe: vo > 0 checked above
             # Cap the exponent to prevent overflow
             exponent = min(q * (ratio - 1), 10)
             fee = vo * 0.05 * (4 ** exponent)
@@ -143,8 +160,9 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
             # Selling below base price
             fee = vo * 0.05
         
-        return int(fee * modifier)
-    except (OverflowError, ValueError):
+        # Ensure fee doesn't exceed reasonable bounds
+        return int(min(fee * modifier, 2_000_000_000))  # Cap at 2B rubles
+    except (OverflowError, ValueError, ZeroDivisionError):
         # Handle extreme values gracefully
         return int(vo * 0.05 * modifier)
 
@@ -160,9 +178,12 @@ def format_roubles(value: Union[int, float, None]) -> str:
     """
     if value is None:
         return "0 ₽"
-    if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
-        return "0 ₽"
     try:
+        # Handle numpy/pandas types and special float values
+        if hasattr(value, 'item'):
+            value = value.item()  # type: ignore[union-attr]
+        if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
+            return "0 ₽"
         return f"{int(value):,} ₽"
     except (ValueError, TypeError, OverflowError):
         return "0 ₽"

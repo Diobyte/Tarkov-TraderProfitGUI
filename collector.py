@@ -10,7 +10,7 @@ import sys
 import signal
 import argparse
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from types import FrameType
 import pandas as pd
 
@@ -31,17 +31,23 @@ logging.basicConfig(
 )
 
 def handle_exit(signum: int, frame: Optional[FrameType]) -> None:
-    """Handle termination signals gracefully."""
-    logging.info("Collector stopped by signal %d.", signum)
+    """Handle termination signals gracefully.
+    
+    Args:
+        signum: The signal number received.
+        frame: The current stack frame (unused).
+    """
+    signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    logging.info("Collector stopped by signal %s (%d).", signal_name, signum)
     sys.exit(0)
 
 # Register signal handlers
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
-if sys.platform != 'win32':
-    # SIGHUP is not available on Windows
-    import signal as sig_module
-    signal.signal(sig_module.SIGHUP, handle_exit)  # type: ignore[attr-defined]
+
+# SIGHUP is not available on Windows
+if hasattr(signal, 'SIGHUP'):
+    signal.signal(signal.SIGHUP, handle_exit)  # type: ignore[attr-defined]
 
 # Session singleton for connection reuse
 _session: Optional[requests.Session] = None
@@ -76,8 +82,12 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
         
     Returns:
         JSON response dict or None on failure.
+        
+    Note:
+        Handles rate limiting (429) with automatic retry via session configuration.
+        Logs errors but does not raise exceptions to allow caller to continue.
     """
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
     session = get_session()
     try:
         payload: Dict[str, Any] = {'query': query}
@@ -96,6 +106,9 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
             except ValueError:
                 logging.error("Failed to decode JSON response.")
                 return None
+        elif response.status_code == 429:
+            logging.warning("Rate limited by API. Will retry on next scheduled run.")
+            return None
         else:
             logging.error("Query failed with code %d: %s", response.status_code, response.text[:200])
             return None
@@ -302,7 +315,7 @@ def fetch_and_store_data() -> None:
         logging.info("No profitable items found or API error.")
 
 
-def train_model_on_batch(batch_data: list) -> None:
+def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> None:
     """
     Train the ML model on the newly fetched batch of data.
     
