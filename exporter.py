@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Final
 from io import StringIO, BytesIO
 
+import numpy as np
 import pandas as pd
 
 __all__: List[str] = ['DataExporter', 'ExportFormat', 'get_exporter']
@@ -243,22 +244,40 @@ class DataExporter:
         export_df = df[available_cols].copy()
         
         # Format for readability - handle potential NaN values
+        def safe_format_currency(x: Any) -> str:
+            """Safely format a value as currency."""
+            if pd.isna(x):
+                return "₽0"
+            try:
+                val = float(x)
+                if np.isinf(val):
+                    return "₽0"
+                # Clamp to reasonable range
+                val = max(min(val, 999_999_999_999), -999_999_999_999)
+                return f"₽{int(val):,}"
+            except (ValueError, TypeError, OverflowError):
+                return "₽0"
+        
+        def safe_format_percent(x: Any) -> str:
+            """Safely format a value as percentage."""
+            if pd.isna(x):
+                return "0.0%"
+            try:
+                val = float(x)
+                if np.isinf(val):
+                    return "0.0%"
+                return f"{val:.1f}%"
+            except (ValueError, TypeError, OverflowError):
+                return "0.0%"
+        
         if 'profit' in export_df.columns:
-            export_df['profit'] = export_df['profit'].apply(
-                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
-            )
+            export_df['profit'] = export_df['profit'].apply(safe_format_currency)
         if 'roi' in export_df.columns:
-            export_df['roi'] = export_df['roi'].apply(
-                lambda x: f"{x:.1f}%" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "0.0%"
-            )
+            export_df['roi'] = export_df['roi'].apply(safe_format_percent)
         if 'flea_price' in export_df.columns:
-            export_df['flea_price'] = export_df['flea_price'].apply(
-                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
-            )
+            export_df['flea_price'] = export_df['flea_price'].apply(safe_format_currency)
         if 'trader_price' in export_df.columns:
-            export_df['trader_price'] = export_df['trader_price'].apply(
-                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
-            )
+            export_df['trader_price'] = export_df['trader_price'].apply(safe_format_currency)
         
         if format == ExportFormat.CSV:
             return self.export_to_csv(export_df, prefix="recommendations")

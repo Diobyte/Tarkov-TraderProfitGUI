@@ -327,9 +327,9 @@ class AlertManager:
             if not isinstance(item, dict):
                 continue
             item_id = item.get('item_id', '')
-            profit = item.get('profit', 0)
-            roi = item.get('roi', 0)
-            offers = item.get('last_offer_count', 0)
+            profit = item.get('profit', 0) or 0  # Handle None
+            roi = item.get('roi', 0) or 0  # Handle None
+            offers = item.get('last_offer_count', 0) or 0  # Handle None
             is_anomaly = item.get('is_anomaly', False)
             
             for alert in self._alerts.values():

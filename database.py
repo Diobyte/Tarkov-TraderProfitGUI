@@ -301,18 +301,22 @@ def init_db() -> None:
             conn.close()
 
 @retry_db_op()
-def save_prices_batch(items: List[Tuple]) -> None:
+def save_prices_batch(items: List[Tuple[Any, ...]]) -> None:
     """
     Save a list of items to the database in a single transaction.
     
     Args:
-        items: List of tuples matching the database schema (15 or 25 columns).
+        items: List of tuples matching the database schema (15, 25, or 26 columns).
         
     Raises:
         ValueError: If items list contains tuples of inconsistent lengths.
     """
     if not items:
         return
+    
+    # Validate that items is a list of tuples
+    if not isinstance(items, list) or not all(isinstance(item, tuple) for item in items):
+        raise ValueError("items must be a list of tuples")
     
     # Validate consistent tuple lengths
     first_len = len(items[0])
@@ -451,7 +455,7 @@ def get_latest_prices() -> List[Tuple[Any, ...]]:
             conn.close()
 
 @retry_db_op()
-def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
+def get_item_history(item_id: str) -> List[Tuple[Any, ...]]:
     """Get the price history for a specific item.
     
     Retrieves all historical records for an item, useful for trend analysis
@@ -493,7 +497,7 @@ def get_item_history(item_id: str) -> List[Tuple[str, int, int, int]]:
             conn.close()
 
 @retry_db_op()
-def get_market_trends(hours: int = 6) -> List[Tuple[str, float, int, int, int]]:
+def get_market_trends(hours: int = 6) -> List[Tuple[Any, ...]]:
     """
     Calculate volatility and average profit over the last X hours.
     

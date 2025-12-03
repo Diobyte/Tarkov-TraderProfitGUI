@@ -372,7 +372,7 @@ def train_model_on_batch(batch_data: List[Tuple[Any, ...]]) -> Dict[str, Any]:
         return {'status': 'no_data', 'items_processed': 0, 'profitable_count': 0}
     
     # Validate batch_data structure
-    if not isinstance(batch_data, list) or not all(isinstance(item, tuple) for item in batch_data):
+    if not isinstance(batch_data, list) or not all(isinstance(item, (tuple, list)) for item in batch_data):
         logging.warning("train_model_on_batch received invalid data structure")
         return {'status': 'error', 'items_processed': 0, 'profitable_count': 0}
         

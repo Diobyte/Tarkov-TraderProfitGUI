@@ -278,8 +278,8 @@ class TarkovMLEngine:
         """
         if hours is None:
             hours = config.TREND_LOOKBACK_HOURS
-        elif hours <= 0:
-            logger.warning("Invalid hours value %d, using default", hours)
+        elif not isinstance(hours, int) or hours <= 0:
+            logger.warning("Invalid hours value %s, using default", hours)
             hours = config.TREND_LOOKBACK_HOURS
             
         try:
@@ -1034,7 +1034,8 @@ class TarkovMLEngine:
             Returns empty DataFrame if item_id not found or n_neighbors invalid.
         """
         # Validate n_neighbors
-        if n_neighbors <= 0:
+        if not isinstance(n_neighbors, int) or n_neighbors <= 0:
+            logger.warning("find_similar_items called with invalid n_neighbors: %s", n_neighbors)
             return pd.DataFrame()
         
         if df.empty or item_id not in df['item_id'].values:
@@ -1101,7 +1102,8 @@ class TarkovMLEngine:
                 - volatility: Normalized standard deviation of profits
         """
         # Validate periods_ahead
-        if periods_ahead <= 0:
+        if not isinstance(periods_ahead, int) or periods_ahead <= 0:
+            logger.warning("predict_profit_trend called with invalid periods_ahead: %s, using default 12", periods_ahead)
             periods_ahead = 12
         
         if history_df.empty or len(history_df) < config.ML_MIN_ITEMS_FOR_ANALYSIS:

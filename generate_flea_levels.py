@@ -17,8 +17,8 @@ import json
 import csv
 import os
 import sys
-from datetime import datetime, UTC
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -146,7 +146,7 @@ def generate_output_files(items: list[dict[str, Any]]) -> None:
     
     # Create metadata
     metadata = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_items": total,
         "locked_items_count": len(locked_items),
         "base_flea_level": FLEA_MARKET_UNLOCK_LEVEL,

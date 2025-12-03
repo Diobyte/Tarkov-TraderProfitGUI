@@ -327,6 +327,8 @@ def format_roubles(value: Union[int, float, None]) -> str:
                 return "0 ₽"
         if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
             return "0 ₽"
-        return f"{int(value):,} ₽"
+        # Clamp very large values to prevent OverflowError
+        int_value = int(max(min(value, 999_999_999_999), -999_999_999_999))
+        return f"{int_value:,} ₽"
     except (ValueError, TypeError, OverflowError):
         return "0 ₽"
