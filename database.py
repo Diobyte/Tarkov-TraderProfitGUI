@@ -282,6 +282,15 @@ def init_db() -> None:
             c.execute('SELECT flea_level_required FROM prices LIMIT 1')
         except sqlite3.OperationalError:
             c.execute('ALTER TABLE prices ADD COLUMN flea_level_required INTEGER DEFAULT 15')
+        
+        # Update flea_level_required based on current CATEGORY_LOCKS config
+        # This ensures database stays in sync when config is updated
+        for category, level in config.CATEGORY_LOCKS.items():
+            c.execute('''
+                UPDATE prices 
+                SET flea_level_required = ? 
+                WHERE category = ? AND flea_level_required != ?
+            ''', (level, category, level))
 
         # Create indexes for performance
         c.execute('CREATE INDEX IF NOT EXISTS idx_prices_timestamp ON prices (timestamp)')
