@@ -518,15 +518,23 @@ class TarkovMLEngine:
         # Update calibration
         if len(df) > 0:
             profit_mean = df['profit'].mean()
-            profit_std = df['profit'].std() if len(df) > 1 else 1
+            profit_std = df['profit'].std() if len(df) > 1 else 1.0
             roi_mean = df['roi'].mean() if 'roi' in df.columns else 0
-            roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1
+            roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1.0
+            
+            # Handle NaN values from empty or single-row series
+            if pd.isna(profit_std):
+                profit_std = 1.0
+            if pd.isna(roi_mean):
+                roi_mean = 0
+            if pd.isna(roi_std):
+                roi_std = 1.0
             
             self.persistence.update_calibration(
                 profit_mean=profit_mean,
-                profit_std=profit_std if not np.isnan(profit_std) else 1,
-                roi_mean=roi_mean if not np.isnan(roi_mean) else 0,
-                roi_std=roi_std if not np.isnan(roi_std) else 1
+                profit_std=profit_std,
+                roi_mean=roi_mean,
+                roi_std=roi_std
             )
         
         # Record training session

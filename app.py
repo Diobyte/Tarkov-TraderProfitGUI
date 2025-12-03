@@ -595,17 +595,15 @@ def render_header() -> None:
     
     with col2:
         last_update = database.get_latest_timestamp()
-        if last_update:
+        if last_update is not None:
             time_ago = datetime.now() - last_update
-            mins = int(time_ago.total_seconds() / 60)
-            if mins < 0:
+            total_mins = int(time_ago.total_seconds() / 60)
+            if total_mins < 1:
                 st.caption("📡 Updated just now")
-            elif mins < 1:
-                st.caption("📡 Updated just now")
-            elif mins < 60:
-                st.caption(f"📡 Updated {mins}m ago")
+            elif total_mins < 60:
+                st.caption(f"📡 Updated {total_mins}m ago")
             else:
-                st.caption(f"📡 Updated {mins // 60}h {mins % 60}m ago")
+                st.caption(f"📡 Updated {total_mins // 60}h {total_mins % 60}m ago")
         else:
             st.caption("📡 No data yet")
     

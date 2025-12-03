@@ -1,6 +1,7 @@
 """Shared utility functions for Tarkov Trader Profit application."""
 
 import pandas as pd
+import numpy as np
 from typing import Optional, Union
 
 __all__ = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
@@ -130,10 +131,19 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
 
 
 def format_roubles(value: Union[int, float, None]) -> str:
-    """Format a number as roubles with thousand separators."""
-    if value is None or pd.isna(value):
+    """Format a number as roubles with thousand separators.
+    
+    Args:
+        value: Numeric value to format (int, float, or None).
+        
+    Returns:
+        Formatted string with rouble symbol and thousand separators.
+    """
+    if value is None:
+        return "0 ₽"
+    if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
         return "0 ₽"
     try:
         return f"{int(value):,} ₽"
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return "0 ₽"

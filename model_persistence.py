@@ -368,7 +368,9 @@ class ModelPersistence:
         recent_accuracy = None
         if self._history['accuracy_history']:
             recent = self._history['accuracy_history'][-10:]
-            recent_accuracy = np.mean([a['accuracy'] for a in recent if a['accuracy'] is not None])
+            valid_accuracies = [a['accuracy'] for a in recent if a['accuracy'] is not None]
+            if valid_accuracies:
+                recent_accuracy = float(np.mean(valid_accuracies))
         
         return {
             'overall_quality': overall_quality,

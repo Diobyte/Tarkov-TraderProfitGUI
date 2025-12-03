@@ -439,7 +439,7 @@ def get_all_prices() -> List[Tuple]:
     return rows
 
 @retry_db_op()
-def cleanup_old_data(days: int = 7, vacuum: bool = False) -> Optional[int]:
+def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
     """
     Delete records older than the specified number of days.
     
@@ -448,13 +448,13 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> Optional[int]:
         vacuum: Whether to run VACUUM after deletion. Can lock database.
         
     Returns:
-        Number of records deleted, or None on error.
+        Number of records deleted.
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
     c = conn.cursor()
     cutoff_date = datetime.now() - timedelta(days=days)
     c.execute('DELETE FROM prices WHERE timestamp < ?', (cutoff_date.isoformat(),))
-    deleted_count = c.rowcount
+    deleted_count = c.rowcount or 0  # Ensure we return int, not None
     conn.commit()
     
     # Only vacuum if explicitly requested and we deleted something

@@ -67,6 +67,15 @@ def get_session() -> requests.Session:
     return _session
 
 def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Execute a GraphQL query against the Tarkov API.
+    
+    Args:
+        query: GraphQL query string.
+        variables: Optional query variables.
+        
+    Returns:
+        JSON response dict or None on failure.
+    """
     headers = {"Content-Type": "application/json"}
     session = get_session()
     try:
@@ -77,12 +86,17 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
         response = session.post(config.API_URL, headers=headers, json=payload, timeout=config.API_TIMEOUT_SECONDS)
         if response.status_code == 200:
             try:
-                return response.json()
+                data = response.json()
+                # Check for GraphQL errors
+                if 'errors' in data:
+                    logging.error(f"GraphQL errors: {data['errors']}")
+                    return None
+                return data
             except ValueError:
                 logging.error("Failed to decode JSON response.")
                 return None
         else:
-            logging.error(f"Query failed with code {response.status_code}")
+            logging.error(f"Query failed with code {response.status_code}: {response.text[:200]}")
             return None
     except requests.Timeout:
         logging.error(f"API request timed out after {config.API_TIMEOUT_SECONDS} seconds.")
@@ -316,7 +330,7 @@ def cleanup_job() -> None:
     """Remove old data records to manage database size."""
     try:
         deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False)
-        if deleted is not None and deleted > 0:
+        if deleted > 0:
             logging.info(f"Cleaned up {deleted} old records.")
     except Exception as e:
         logging.error(f"Error during cleanup: {e}")
