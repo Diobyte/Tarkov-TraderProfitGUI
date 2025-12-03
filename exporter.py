@@ -10,17 +10,17 @@ import csv
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Final
 from io import StringIO, BytesIO
 
 import pandas as pd
 
-__all__ = ['DataExporter', 'ExportFormat', 'get_exporter']
+__all__: List[str] = ['DataExporter', 'ExportFormat', 'get_exporter']
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-EXPORTS_DIR = os.path.join(BASE_DIR, 'exports')
+BASE_DIR: Final[str] = os.path.dirname(os.path.abspath(__file__))
+EXPORTS_DIR: Final[str] = os.path.join(BASE_DIR, 'exports')
 
 
 class ExportFormat:
@@ -195,7 +195,25 @@ class DataExporter:
             
         Returns:
             Path to the exported file.
+            
+        Raises:
+            ValueError: If format is not supported.
         """
+        if df.empty:
+            # Handle empty DataFrame gracefully
+            empty_df = pd.DataFrame(columns=['name', 'profit', 'roi'])
+            if format == ExportFormat.CSV:
+                return self.export_to_csv(empty_df, prefix="recommendations")
+            elif format == ExportFormat.JSON:
+                return self.export_to_json(empty_df, prefix="recommendations")
+            elif format == ExportFormat.EXCEL:
+                return self.export_to_excel(empty_df, prefix="recommendations")
+            elif format == ExportFormat.MARKDOWN:
+                return self.export_to_markdown(empty_df, prefix="recommendations",
+                                               title="Trading Recommendations")
+            else:
+                raise ValueError(f"Unsupported format: {format}")
+        
         # Select key columns for recommendations
         rec_columns = [
             'name', 'profit', 'roi', 'flea_price', 'trader_price',
@@ -207,15 +225,23 @@ class DataExporter:
         available_cols = [c for c in rec_columns if c in df.columns]
         export_df = df[available_cols].copy()
         
-        # Format for readability
+        # Format for readability - handle potential NaN values
         if 'profit' in export_df.columns:
-            export_df['profit'] = export_df['profit'].apply(lambda x: f"₽{x:,.0f}")
+            export_df['profit'] = export_df['profit'].apply(
+                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
+            )
         if 'roi' in export_df.columns:
-            export_df['roi'] = export_df['roi'].apply(lambda x: f"{x:.1f}%")
+            export_df['roi'] = export_df['roi'].apply(
+                lambda x: f"{x:.1f}%" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "0.0%"
+            )
         if 'flea_price' in export_df.columns:
-            export_df['flea_price'] = export_df['flea_price'].apply(lambda x: f"₽{x:,.0f}")
+            export_df['flea_price'] = export_df['flea_price'].apply(
+                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
+            )
         if 'trader_price' in export_df.columns:
-            export_df['trader_price'] = export_df['trader_price'].apply(lambda x: f"₽{x:,.0f}")
+            export_df['trader_price'] = export_df['trader_price'].apply(
+                lambda x: f"₽{x:,.0f}" if pd.notna(x) and not (isinstance(x, float) and (x == float('inf') or x == float('-inf'))) else "₽0"
+            )
         
         if format == ExportFormat.CSV:
             return self.export_to_csv(export_df, prefix="recommendations")
@@ -347,13 +373,18 @@ class DataExporter:
         return deleted
 
 
-# Create a default exporter instance
+# Singleton instance with thread-safe initialization
+import threading
 _exporter: Optional[DataExporter] = None
+_exporter_lock = threading.Lock()
 
 
 def get_exporter() -> DataExporter:
-    """Get or create the data exporter singleton."""
+    """Get or create the data exporter singleton (thread-safe)."""
     global _exporter
     if _exporter is None:
-        _exporter = DataExporter()
+        with _exporter_lock:
+            # Double-check locking pattern
+            if _exporter is None:
+                _exporter = DataExporter()
     return _exporter

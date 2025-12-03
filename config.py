@@ -21,19 +21,40 @@ logger = logging.getLogger(__name__)
 
 
 def _get_env_int(key: str, default: int) -> int:
-    """Get integer value from environment variable or use default."""
+    """Get integer value from environment variable or use default.
+    
+    Args:
+        key: Environment variable suffix (will be prefixed with TARKOV_).
+        default: Default value if env var is not set or invalid.
+        
+    Returns:
+        Integer value from environment or default.
+    """
     env_value = os.environ.get(f'TARKOV_{key}')
     if env_value is None:
         return default
     try:
-        return int(env_value)
+        result = int(env_value)
+        # Validate non-negative for most settings
+        if result < 0 and key not in ('MIN_PROFIT_FOR_DISPLAY',):
+            logger.warning("Negative value for TARKOV_%s: %d, using default %d", key, result, default)
+            return default
+        return result
     except ValueError:
         logger.warning("Invalid integer for TARKOV_%s: %r, using default %d", key, env_value, default)
         return default
 
 
 def _get_env_float(key: str, default: float) -> float:
-    """Get float value from environment variable or use default."""
+    """Get float value from environment variable or use default.
+    
+    Args:
+        key: Environment variable suffix (will be prefixed with TARKOV_).
+        default: Default value if env var is not set or invalid.
+        
+    Returns:
+        Float value from environment or default.
+    """
     env_value = os.environ.get(f'TARKOV_{key}')
     if env_value is None:
         return default

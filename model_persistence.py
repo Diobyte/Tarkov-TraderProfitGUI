@@ -66,8 +66,17 @@ class ModelPersistence:
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'rb') as f:
-                    self._state = pickle.load(f)
-                logger.info("Loaded model state from %s", self.state_file)
+                    loaded_state = pickle.load(f)
+                    # Validate that loaded state has expected structure
+                    if isinstance(loaded_state, dict) and 'version' in loaded_state:
+                        self._state = loaded_state
+                        logger.info("Loaded model state from %s", self.state_file)
+                    else:
+                        logger.warning("Invalid state structure, using defaults")
+                        self._state = self._get_default_state()
+            except (pickle.UnpicklingError, EOFError, ValueError, TypeError) as e:
+                logger.warning("Failed to load model state (corrupted?): %s", e)
+                self._state = self._get_default_state()
             except Exception as e:
                 logger.warning("Failed to load model state: %s", e)
                 self._state = self._get_default_state()
@@ -79,9 +88,18 @@ class ModelPersistence:
         if os.path.exists(self.history_file):
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
-                    self._history = json.load(f)
-                logger.info("Loaded learned history from %s", self.history_file)
-            except Exception as e:
+                    loaded_history = json.load(f)
+                    # Validate structure
+                    if isinstance(loaded_history, dict) and 'version' in loaded_history:
+                        self._history = loaded_history
+                        logger.info("Loaded learned history from %s", self.history_file)
+                    else:
+                        logger.warning("Invalid history structure, using defaults")
+                        self._history = self._get_default_history()
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning("Failed to parse learned history: %s", e)
+                self._history = self._get_default_history()
+            except (OSError, IOError) as e:
                 logger.warning("Failed to load learned history: %s", e)
                 self._history = self._get_default_history()
         else:
@@ -160,12 +178,19 @@ class ModelPersistence:
             trader: Best trader name
         """
         # Skip empty or invalid item IDs
-        if not item_id or not isinstance(item_id, str) or not item_id.strip():
+        if not item_id or not isinstance(item_id, str):
+            return
+        item_id = str(item_id).strip()
+        if not item_id:
             return
         
         # Sanitize category and trader
-        category = str(category) if category else 'Unknown'
-        trader = str(trader) if trader else 'Unknown'
+        category = str(category).strip() if category else 'Unknown'
+        trader = str(trader).strip() if trader else 'Unknown'
+        if not category:
+            category = 'Unknown'
+        if not trader:
+            trader = 'Unknown'
         
         # Sanitize inputs to avoid NaN/inf issues
         import math
@@ -196,8 +221,8 @@ class ModelPersistence:
                 'count': 0,
                 'profit_mean': 0.0,
                 'profit_m2': 0.0,  # For variance calculation
-                'profit_min': float('inf'),
-                'profit_max': float('-inf'),
+                'profit_min': profit,  # Initialize with first profit instead of inf
+                'profit_max': profit,  # Initialize with first profit instead of -inf
                 'flea_price_mean': 0.0,
                 'offers_mean': 0.0,
                 'category': category,

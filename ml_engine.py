@@ -531,13 +531,13 @@ class TarkovMLEngine:
             roi_std = df['roi'].std() if 'roi' in df.columns and len(df) > 1 else 1.0
             
             # Handle NaN values from empty or single-row series
-            if pd.isna(profit_mean):
+            if pd.isna(profit_mean) or np.isinf(profit_mean):
                 profit_mean = 0
-            if pd.isna(profit_std) or profit_std == 0:
+            if pd.isna(profit_std) or profit_std == 0 or np.isinf(profit_std):
                 profit_std = 1.0
-            if pd.isna(roi_mean):
+            if pd.isna(roi_mean) or np.isinf(roi_mean):
                 roi_mean = 0
-            if pd.isna(roi_std) or roi_std == 0:
+            if pd.isna(roi_std) or roi_std == 0 or np.isinf(roi_std):
                 roi_std = 1.0
             
             self.persistence.update_calibration(

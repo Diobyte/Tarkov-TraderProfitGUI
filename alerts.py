@@ -34,12 +34,13 @@ def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[s
     
     temp_name: Optional[str] = None
     try:
-        with NamedTemporaryFile('w', delete=False, dir=directory or '.', encoding='utf-8') as tmp:
+        with NamedTemporaryFile('w', delete=False, dir=directory or '.', encoding='utf-8', suffix='.tmp') as tmp:
             json.dump(payload, tmp, indent=2, default=str)
             tmp.flush()
             os.fsync(tmp.fileno())
             temp_name = tmp.name
         os.replace(temp_name, file_path)
+        temp_name = None  # Clear so we don't try to delete on success
     except OSError as e:
         # Clean up temp file if it exists
         if temp_name and os.path.exists(temp_name):
@@ -51,6 +52,13 @@ def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[s
         logger.warning("Atomic write failed, using direct write: %s", e)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, indent=2, default=str)
+    finally:
+        # Final cleanup attempt for temp file
+        if temp_name and os.path.exists(temp_name):
+            try:
+                os.remove(temp_name)
+            except OSError:
+                pass
 
 
 class AlertType(Enum):
@@ -173,7 +181,6 @@ class AlertManager:
                 self._history = history[-max_history:]
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning("Failed to load alert history, starting fresh: %s", e)
-                self._history = []
                 self._history = []
     
     def _create_default_alerts(self) -> None:

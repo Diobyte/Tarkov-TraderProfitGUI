@@ -10,7 +10,7 @@ import sys
 import signal
 import argparse
 import os
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, NoReturn
 from types import FrameType
 import pandas as pd
 
@@ -30,15 +30,28 @@ logging.basicConfig(
     ]
 )
 
-def handle_exit(signum: int, frame: Optional[FrameType]) -> None:
+# Module-level logger for better traceability
+logger = logging.getLogger(__name__)
+
+
+def handle_exit(signum: int, frame: Optional[FrameType]) -> NoReturn:
     """Handle termination signals gracefully.
     
     Args:
         signum: The signal number received.
         frame: The current stack frame (unused).
     """
+    global _session
     signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
-    logging.info("Collector stopped by signal %s (%d).", signal_name, signum)
+    logger.info("Collector stopped by signal %s (%d).", signal_name, signum)
+    
+    # Clean up session on exit
+    if _session is not None:
+        try:
+            _session.close()
+        except Exception:
+            pass
+    
     sys.exit(0)
 
 # Register signal handlers

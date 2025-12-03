@@ -2,9 +2,9 @@
 
 import pandas as pd
 import numpy as np
-from typing import Optional, Union
+from typing import Optional, Union, List
 
-__all__ = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
+__all__: List[str] = ['calculate_metrics', 'calculate_flea_market_fee', 'format_roubles']
 
 
 def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
@@ -135,8 +135,13 @@ def calculate_flea_market_fee(base_price: int, sell_price: int, intel_center_lev
         The fee in rubles
     """
     # Validate inputs - base_price must be positive for meaningful calculation
+    if not isinstance(base_price, (int, float)) or not isinstance(sell_price, (int, float)):
+        return 0
     if base_price <= 0 or sell_price <= 0:
         return 0
+    
+    # Validate intel_center_level
+    intel_center_level = max(0, min(3, int(intel_center_level)))
     
     # Fee reduction based on intel center
     fee_reduction = {0: 1.0, 1: 0.95, 2: 0.90, 3: 0.85}
@@ -179,8 +184,12 @@ def format_roubles(value: Union[int, float, None]) -> str:
     if value is None:
         return "0 ₽"
     try:
-        # Handle numpy/pandas types and special float values
+        # Handle numpy/pandas types and special float values first
+        # Check for NaN/inf before item() conversion to avoid conversion errors
         if hasattr(value, 'item'):
+            # For numpy types, check isnan/isinf before converting
+            if np.isnan(value) or np.isinf(value):  # type: ignore[arg-type]
+                return "0 ₽"
             value = value.item()  # type: ignore[union-attr]
         if isinstance(value, float) and (pd.isna(value) or np.isinf(value)):
             return "0 ₽"
