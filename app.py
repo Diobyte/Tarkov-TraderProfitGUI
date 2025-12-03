@@ -1296,6 +1296,25 @@ def render_visual_analytics(df: pd.DataFrame) -> None:
             use_container_width=True,
             height=400
         )
+        
+        # Export options for category summary
+        exp_col1, exp_col2 = st.columns(2)
+        with exp_col1:
+            st.download_button(
+                "📥 Export Category Summary CSV",
+                cat_summary.to_csv(),
+                "tarkov_category_summary.csv",
+                "text/csv",
+                key="dl_cat_summary_csv"
+            )
+        with exp_col2:
+            st.download_button(
+                "📥 Export Category Summary JSON",
+                cat_summary.to_json(orient='index', indent=2),
+                "tarkov_category_summary.json",
+                "application/json",
+                key="dl_cat_summary_json"
+            )
     
     # --- Trader Breakdown Tab ---
     with viz_tabs[2]:
@@ -1369,6 +1388,25 @@ def render_visual_analytics(df: pd.DataFrame) -> None:
             },
             use_container_width=True
         )
+        
+        # Export options for trader stats
+        exp_col1, exp_col2 = st.columns(2)
+        with exp_col1:
+            st.download_button(
+                "📥 Export Trader Stats CSV",
+                trader_stats.to_csv(),
+                "tarkov_trader_stats.csv",
+                "text/csv",
+                key="dl_trader_stats_csv"
+            )
+        with exp_col2:
+            st.download_button(
+                "📥 Export Trader Stats JSON",
+                trader_stats.to_json(orient='index', indent=2),
+                "tarkov_trader_stats.json",
+                "application/json",
+                key="dl_trader_stats_json"
+            )
     
     # --- Market Heatmap Tab ---
     with viz_tabs[3]:
@@ -1772,6 +1810,25 @@ def render_analytics(df: pd.DataFrame) -> None:
                 hide_index=True,
                 use_container_width=True
             )
+            
+            # Export options for trend data
+            exp_col1, exp_col2 = st.columns(2)
+            with exp_col1:
+                st.download_button(
+                    "📥 Export Trends CSV",
+                    trend_df.to_csv(index=False),
+                    "tarkov_trend_data.csv",
+                    "text/csv",
+                    key="dl_trend_csv"
+                )
+            with exp_col2:
+                st.download_button(
+                    "📥 Export Trends JSON",
+                    trend_df.to_json(orient='records', indent=2),
+                    "tarkov_trend_data.json",
+                    "application/json",
+                    key="dl_trend_json"
+                )
         else:
             st.info("No trend data available yet. Keep the collector running to build trend history.")
     
@@ -1857,6 +1914,25 @@ def render_analytics(df: pd.DataFrame) -> None:
                 hide_index=True,
                 use_container_width=True
             )
+            
+            # Export options for category data
+            exp_col1, exp_col2 = st.columns(2)
+            with exp_col1:
+                st.download_button(
+                    "📥 Export Categories CSV",
+                    cat_df_display.to_csv(index=False),
+                    "tarkov_category_performance.csv",
+                    "text/csv",
+                    key="dl_category_csv"
+                )
+            with exp_col2:
+                st.download_button(
+                    "📥 Export Categories JSON",
+                    cat_df_display.to_json(orient='records', indent=2),
+                    "tarkov_category_performance.json",
+                    "application/json",
+                    key="dl_category_json"
+                )
         else:
             st.info("No category data available yet. Keep the collector running to build category insights.")
 
