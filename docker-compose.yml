@@ -1,14 +1,13 @@
 # Docker Compose for Tarkov Trader Profit GUI
-# Runs collector, dashboard, and GraphQL API with shared SQLite database
+# Pulls pre-built images from GitHub Container Registry
+# Usage: docker compose up -d
 
 services:
   # =============================================================================
   # Data Collector Service (Background)
   # =============================================================================
   collector:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/diobyte/tarkov-traderprofitgui:latest
     container_name: tarkov-collector
     restart: unless-stopped
     command: ["python", "-u", "collector.py", "--standalone"]
@@ -31,9 +30,7 @@ services:
   # Streamlit Dashboard Service
   # =============================================================================
   dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/diobyte/tarkov-traderprofitgui:latest
     container_name: tarkov-dashboard
     restart: unless-stopped
     command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
@@ -63,9 +60,7 @@ services:
   # GraphQL API Service
   # =============================================================================
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/diobyte/tarkov-traderprofitgui:latest
     container_name: tarkov-api
     restart: unless-stopped
     command: ["python", "-u", "api/server.py"]

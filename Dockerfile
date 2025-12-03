@@ -4,7 +4,7 @@
 # ==============================================================================
 # Stage 1: Base image with Python dependencies
 # ==============================================================================
-FROM python:3.12-slim as base
+FROM python:3.12-slim AS base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -33,7 +33,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ==============================================================================
 # Stage 2: Application image
 # ==============================================================================
-FROM python:3.12-slim as app
+FROM python:3.12-slim AS app
+
+# Build arguments for version labeling
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
+
+# OCI Image Labels for version tracking
+LABEL org.opencontainers.image.title="Tarkov Trader Profit GUI" \
+    org.opencontainers.image.description="Flea market arbitrage finder for Escape from Tarkov" \
+    org.opencontainers.image.version="${VERSION}" \
+    org.opencontainers.image.created="${BUILD_DATE}" \
+    org.opencontainers.image.revision="${VCS_REF}" \
+    org.opencontainers.image.source="https://github.com/Diobyte/Tarkov-TraderProfitGUI" \
+    org.opencontainers.image.url="https://github.com/Diobyte/Tarkov-TraderProfitGUI" \
+    org.opencontainers.image.vendor="Diobyte" \
+    org.opencontainers.image.licenses="MIT"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -65,6 +81,11 @@ COPY --from=base /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY --chown=appuser:appuser . .
+
+# Store version info in the image for runtime checking
+RUN echo "${VERSION}" > /app/.version && \
+    echo "${BUILD_DATE}" > /app/.build_date && \
+    echo "${VCS_REF}" > /app/.git_commit
 
 # Use Docker-specific Streamlit config
 RUN cp .streamlit/config.docker.toml .streamlit/config.toml

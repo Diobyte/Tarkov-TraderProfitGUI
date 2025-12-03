@@ -25,9 +25,10 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ALERTS_FILE = os.path.join(BASE_DIR, 'price_alerts.json')
-ALERT_HISTORY_FILE = os.path.join(BASE_DIR, 'alert_history.json')
+# Store alert files in the centralized data directory (user's Documents folder)
+# This keeps generated files out of the Git repository
+ALERTS_FILE = os.path.join(str(config.DATA_DIR), 'price_alerts.json')
+ALERT_HISTORY_FILE = os.path.join(str(config.DATA_DIR), 'alert_history.json')
 
 
 def _atomic_json_dump(file_path: str, payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
