@@ -1,3 +1,9 @@
+"""Database operations for Tarkov Trader Profit application.
+
+Handles SQLite connections, schema management, and data operations
+with WAL mode for concurrent read/write access.
+"""
+
 import sqlite3
 import os
 import time
@@ -7,6 +13,12 @@ from typing import List, Tuple, Optional, Any, Callable, Union
 from functools import wraps
 
 import config
+
+__all__ = [
+    'init_db', 'save_prices_batch', 'get_latest_prices', 'get_item_history',
+    'get_market_trends', 'get_all_prices', 'cleanup_old_data', 'get_latest_timestamp',
+    'clear_all_data', 'parse_timestamp', 'retry_db_op', 'DB_NAME'
+]
 
 # Ensure DB is always created in the same directory as this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -233,20 +245,19 @@ def get_latest_prices() -> List[Tuple]:
     latest_dt = parse_timestamp(latest_ts_str)
     
     if latest_dt is None:
-        # Fallback: if parsing fails, try exact match logic (old behavior)
-        if True:  # Replaces the nested try/except structure
-            c.execute('''
-                SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
-                    avg_24h_price, low_24h_price, change_last_48h, weight, category,
-                    base_price, high_24h_price, last_offer_count, short_name, wiki_link,
-                    trader_level_required, trader_task_unlock, price_velocity, liquidity_score
-                FROM prices
-                WHERE timestamp = ?
-                ORDER BY profit DESC
-            ''', (latest_ts_str,))
-            rows = c.fetchall()
-            conn.close()
-            return rows
+        # Fallback: if parsing fails, use exact timestamp match (legacy behavior)
+        c.execute('''
+            SELECT item_id, name, flea_price, trader_price, trader_name, profit, timestamp, icon_link, width, height, 
+                avg_24h_price, low_24h_price, change_last_48h, weight, category,
+                base_price, high_24h_price, last_offer_count, short_name, wiki_link,
+                trader_level_required, trader_task_unlock, price_velocity, liquidity_score
+            FROM prices
+            WHERE timestamp = ?
+            ORDER BY profit DESC
+        ''', (latest_ts_str,))
+        rows = c.fetchall()
+        conn.close()
+        return rows
 
     # Window allows for missed/partial collection cycles
     # This bridges the gap when the API returns partial lists.

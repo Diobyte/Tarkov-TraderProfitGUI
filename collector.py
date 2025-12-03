@@ -59,8 +59,7 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
         if variables:
             payload['variables'] = variables
             
-        # Added timeout to prevent hanging indefinitely
-        response = session.post(config.API_URL, headers=headers, json=payload, timeout=30)
+        response = session.post(config.API_URL, headers=headers, json=payload, timeout=config.API_TIMEOUT_SECONDS)
         if response.status_code == 200:
             try:
                 return response.json()
@@ -71,7 +70,7 @@ def run_query(query: str, variables: Optional[Dict[str, Any]] = None) -> Optiona
             logging.error(f"Query failed with code {response.status_code}")
             return None
     except requests.Timeout:
-        logging.error("API request timed out after 30 seconds.")
+        logging.error(f"API request timed out after {config.API_TIMEOUT_SECONDS} seconds.")
         return None
     except requests.ConnectionError:
         logging.error("API connection error. Check your internet connection.")
@@ -258,23 +257,21 @@ def fetch_and_store_data() -> None:
         logging.info("No profitable items found or API error.")
 
 def cleanup_job() -> None:
+    """Remove old data records to manage database size."""
     try:
-        # Retention set to manage DB size
-        # Increase this if you need more historical data for ML, but be aware of DB size
-        # We do NOT vacuum automatically here to prevent locking the DB for too long during collection cycles
-        deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False) 
+        deleted = database.cleanup_old_data(days=config.DATA_RETENTION_DAYS, vacuum=False)
         if deleted is not None and deleted > 0:
             logging.info(f"Cleaned up {deleted} old records.")
     except Exception as e:
         logging.error(f"Error during cleanup: {e}")
 
+
 def job() -> None:
+    """Main collection job - fetches and stores market data."""
     try:
         fetch_and_store_data()
     except Exception as e:
         logging.error(f"Job failed: {e}")
-
-# duplicate import removed
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

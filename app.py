@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import database
 import utils
+import config
 from ml_engine import get_ml_engine
 import time
 import subprocess
@@ -242,8 +243,16 @@ def get_database_stats() -> dict:
     
     return stats
 
-def read_log_file(log_file: str, max_lines: int = 100) -> str:
-    """Read the last N lines from a log file."""
+def read_log_file(log_file: str, max_lines: int = config.LOG_MAX_LINES) -> str:
+    """Read the last N lines from a log file.
+    
+    Args:
+        log_file: Path to the log file to read.
+        max_lines: Maximum number of lines to return (newest first).
+    
+    Returns:
+        String containing the last max_lines of the log file, reversed.
+    """
     if not os.path.exists(log_file):
         return f"Log file not found: {log_file}"
     

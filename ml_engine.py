@@ -28,6 +28,8 @@ import logging
 from functools import lru_cache
 from datetime import datetime, timedelta
 
+import config
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -167,8 +169,14 @@ class TarkovMLEngine:
         """
         Calculate ML-enhanced opportunity score using gradient boosting.
         Learns optimal weights from historical data patterns.
+        
+        Args:
+            df: DataFrame with market data including profit, prices, and item metadata.
+            
+        Returns:
+            DataFrame with added ml_opportunity_score, opportunity_rank, and opportunity_percentile columns.
         """
-        if df.empty or len(df) < 10:
+        if df.empty or len(df) < config.ML_MIN_ITEMS_FOR_ANALYSIS:
             return df
         
         features = self.prepare_features(df)
@@ -234,12 +242,19 @@ class TarkovMLEngine:
         
         return features
     
-    def detect_arbitrage_anomalies(self, df: pd.DataFrame, contamination: float = 0.05) -> pd.DataFrame:
+    def detect_arbitrage_anomalies(self, df: pd.DataFrame, contamination: float = config.ML_ANOMALY_CONTAMINATION) -> pd.DataFrame:
         """
         Use Isolation Forest to detect unusual pricing patterns that may indicate
         arbitrage opportunities or data errors.
+        
+        Args:
+            df: DataFrame with prepared features for anomaly detection.
+            contamination: Expected proportion of outliers in the dataset.
+            
+        Returns:
+            DataFrame with is_anomaly, anomaly_score, and anomaly_type columns added.
         """
-        if df.empty or len(df) < 20:
+        if df.empty or len(df) < config.ML_MIN_ITEMS_FOR_ANOMALY:
             df['is_anomaly'] = False
             df['anomaly_score'] = 0
             return df
@@ -260,7 +275,7 @@ class TarkovMLEngine:
         iso_forest = IsolationForest(
             contamination=contamination,
             random_state=42,
-            n_estimators=100
+            n_estimators=config.ML_ESTIMATORS
         )
         
         # Fit and predict

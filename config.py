@@ -1,20 +1,31 @@
 # config.py
+"""Configuration constants for Tarkov Trader Profit application."""
+
+from typing import Dict
 
 # API Configuration
-API_URL = 'https://api.tarkov.dev/graphql'
-COLLECTION_INTERVAL_MINUTES = 5
-DATA_RETENTION_DAYS = 7
+API_URL: str = 'https://api.tarkov.dev/graphql'
+COLLECTION_INTERVAL_MINUTES: int = 5
+DATA_RETENTION_DAYS: int = 7
+API_TIMEOUT_SECONDS: int = 30
 
 # Database Configuration
-DB_LOOKBACK_WINDOW_MINUTES = 45  # Window for fetching "latest" prices
-LIQUIDITY_NORMALIZATION_THRESHOLD = 50  # Offer count considered "high liquidity"
-MAX_LIQUIDITY_SCORE = 100  # Maximum liquidity score
+DB_LOOKBACK_WINDOW_MINUTES: int = 45  # Window for fetching "latest" prices
+LIQUIDITY_NORMALIZATION_THRESHOLD: int = 50  # Offer count considered "high liquidity"
+MAX_LIQUIDITY_SCORE: int = 100  # Maximum liquidity score
 
-# Cache Configuration  
-STREAMLIT_CACHE_TTL_SECONDS = 60  # How long to cache data in Streamlit
+# Cache Configuration
+STREAMLIT_CACHE_TTL_SECONDS: int = 60  # How long to cache data in Streamlit
+LOG_MAX_LINES: int = 100  # Maximum lines to display from log files
+
+# ML Engine Configuration
+ML_ANOMALY_CONTAMINATION: float = 0.05  # Fraction of outliers for anomaly detection
+ML_ESTIMATORS: int = 100  # Number of estimators for ensemble models
+ML_MIN_ITEMS_FOR_ANALYSIS: int = 10  # Minimum items required for ML analysis
+ML_MIN_ITEMS_FOR_ANOMALY: int = 20  # Minimum items for anomaly detection
 
 # Flea Market Level Requirements (Based on Patch 0.15+ changes)
-CATEGORY_LOCKS = {
+CATEGORY_LOCKS: Dict[str, int] = {
     "Sniper rifle": 20,
     "Assault rifle": 25,
     "Assault carbine": 25,
@@ -36,11 +47,11 @@ CATEGORY_LOCKS = {
     "Lubricant": 30,
     "Medical supplies": 30,
     "Fuel": 30,
-    "Drug": 30, 
-    "Info": 30, 
+    "Drug": 30,
+    "Info": 30,
 }
 
-ITEM_LOCKS = {
+ITEM_LOCKS: Dict[str, int] = {
     "PS12B": 40,
     "M80": 35,
     "Blackout CJB": 40,
