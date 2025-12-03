@@ -6,7 +6,7 @@
 # ==============================================================================
 # Stage 1: Builder - Install dependencies with build tools
 # ==============================================================================
-FROM python:3.14-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ==============================================================================
 # Stage 2: Production image - Minimal runtime
 # ==============================================================================
-FROM python:3.14-slim AS production
+FROM python:3.13-slim AS production
 
 # Build arguments for version labeling (set by CI/CD)
 ARG VERSION=dev
@@ -51,7 +51,7 @@ LABEL org.opencontainers.image.title="Tarkov Trader Profit GUI" \
     org.opencontainers.image.documentation="https://github.com/Diobyte/Tarkov-TraderProfitGUI#readme" \
     org.opencontainers.image.vendor="Diobyte" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.base.name="docker.io/library/python:3.14-slim"
+    org.opencontainers.image.base.name="docker.io/library/python:3.13-slim"
 
 # ==============================================================================
 # Environment Variables (LinuxServer.io style)
@@ -85,7 +85,7 @@ ENV PUID=1000 \
     API_HOST=0.0.0.0 \
     API_PORT=4000 \
     # Python path for installed packages
-    PYTHONPATH=/usr/local/lib/python3.14/site-packages
+    PYTHONPATH=/usr/local/lib/python3.13/site-packages
 
 # Install runtime dependencies
 RUN apt-get update \
