@@ -1,0 +1,35 @@
+# Docker-specific Streamlit configuration
+# This file is used when running in Docker container
+
+[theme]
+base="dark"
+primaryColor="#4CAF50"
+backgroundColor="#0E1117"
+secondaryBackgroundColor="#262730"
+textColor="#FAFAFA"
+font="sans serif"
+
+[server]
+# Run headless in container
+headless = true
+# Bind to all interfaces for container networking
+address = "0.0.0.0"
+# Default Streamlit port
+port = 8501
+# Enable CORS for LAN access
+enableCORS = true
+# Enable XSRF protection
+enableXsrfProtection = true
+# Disable file watcher in production container
+runOnSave = false
+# Max upload size in MB
+maxUploadSize = 200
+
+[browser]
+# No browser opening in container
+serverAddress = "0.0.0.0"
+gatherUsageStats = false
+
+[logger]
+# Use INFO level logging in container
+level = "info"

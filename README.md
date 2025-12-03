@@ -227,6 +227,364 @@ pytest tests/ -v
 
 ---
 
+## 🐳 Docker / Self-Hosting
+
+Run the entire application in Docker for easy deployment on your home server or local network.
+
+### Quick Start (Single Container)
+
+```bash
+# Build the image
+docker build -t tarkov-profit .
+
+# Run with persistent data volume
+docker run -d \
+  --name tarkov-profit \
+  -p 8501:8501 \
+  -p 4000:4000 \
+  -v tarkov-data:/data \
+  tarkov-profit
+```
+
+**Access:**
+
+- **Dashboard**: `http://localhost:8501`
+- **GraphQL Playground**: `http://localhost:4000/graphql`
+- **API Health Check**: `http://localhost:4000/health`
+
+### Docker Compose (Recommended)
+
+For production deployments, use Docker Compose with separate containers for each service:
+
+```bash
+docker-compose up -d
+```
+
+#### Example `docker-compose.yml`
+
+```yaml
+# Docker Compose for Tarkov Trader Profit GUI
+# Runs collector, dashboard, and GraphQL API with shared SQLite database
+
+services:
+  # Data Collector Service (Background)
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-collector
+    restart: unless-stopped
+    command: ["python", "-u", "collector.py", "--standalone"]
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+      - TARKOV_COLLECTION_INTERVAL_MINUTES=5
+      - TARKOV_DATA_RETENTION_DAYS=7
+    networks:
+      - tarkov-net
+
+  # Streamlit Dashboard Service
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-dashboard
+    restart: unless-stopped
+    command:
+      [
+        "streamlit",
+        "run",
+        "app.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501",
+      ]
+    ports:
+      - "8501:8501"
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+    networks:
+      - tarkov-net
+    depends_on:
+      - collector
+
+  # GraphQL API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-api
+    restart: unless-stopped
+    command: ["python", "-u", "api/server.py"]
+    ports:
+      - "4000:4000"
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+      - API_HOST=0.0.0.0
+      - API_PORT=4000
+    networks:
+      - tarkov-net
+    depends_on:
+      - collector
+
+volumes:
+  tarkov-data:
+    driver: local
+
+networks:
+  tarkov-net:
+    driver: bridge
+```
+
+### LAN Access
+
+To access from other devices on your network, use your host's IP address:
+
+```bash
+# Find your IP
+# Windows: ipconfig
+# Linux/macOS: ip addr or ifconfig
+
+# Access from other devices:
+# Dashboard: http://192.168.1.100:8501
+# GraphQL:   http://192.168.1.100:4000/graphql
+```
+
+### GraphQL API Usage
+
+The GraphQL API provides programmatic access to all market data.
+
+#### Endpoints
+
+| Endpoint        | Description                         |
+| --------------- | ----------------------------------- |
+| `GET /graphql`  | GraphQL Playground (interactive UI) |
+| `POST /graphql` | GraphQL queries                     |
+| `GET /health`   | Health check                        |
+| `GET /stats`    | Quick statistics                    |
+| `GET /docs`     | OpenAPI documentation               |
+
+#### Example Queries
+
+**Get Top 10 Profitable Items:**
+
+```graphql
+query {
+  profitableItems(minProfit: 5000, limit: 10) {
+    name
+    profit
+    roi
+    fleaPrice
+    traderPrice
+    traderName
+    category
+  }
+}
+```
+
+**Search for Items:**
+
+```graphql
+query {
+  search(query: "GPU", limit: 5) {
+    name
+    profit
+    fleaPrice
+    traderPrice
+    profitPerSlot
+  }
+}
+```
+
+**Get All Items with Filters:**
+
+```graphql
+query {
+  items(
+    minProfit: 1000
+    minRoi: 10.0
+    category: "Barter"
+    sortBy: "profit"
+    sortDesc: true
+    limit: 50
+  ) {
+    itemId
+    name
+    profit
+    roi
+    fleaPrice
+    traderPrice
+    traderName
+  }
+}
+```
+
+**Get Category Statistics:**
+
+```graphql
+query {
+  categories {
+    category
+    itemCount
+    avgProfit
+    totalProfit
+    profitableCount
+  }
+}
+```
+
+**Get Trader Statistics:**
+
+```graphql
+query {
+  traders {
+    traderName
+    itemCount
+    avgProfit
+    totalProfit
+  }
+}
+```
+
+**Get Market Trends:**
+
+```graphql
+query {
+  trends(hours: 24, limit: 20) {
+    itemId
+    avgProfit
+    minProfit
+    maxProfit
+    dataPoints
+    volatility
+  }
+}
+```
+
+**Check Database Health:**
+
+```graphql
+query {
+  health {
+    status
+    totalRecords
+    uniqueItems
+    dataAgeHours
+    fileSizeMb
+  }
+}
+```
+
+#### Using with cURL
+
+```bash
+# Get profitable items
+curl -X POST http://localhost:4000/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ profitableItems(limit: 5) { name profit roi } }"}'
+
+# Health check
+curl http://localhost:4000/health
+```
+
+#### Using with Python
+
+```python
+import requests
+
+GRAPHQL_URL = "http://localhost:4000/graphql"
+
+query = """
+query GetProfitableItems($minProfit: Int!, $limit: Int!) {
+  profitableItems(minProfit: $minProfit, limit: $limit) {
+    name
+    profit
+    roi
+    fleaPrice
+    traderPrice
+    traderName
+  }
+}
+"""
+
+response = requests.post(
+    GRAPHQL_URL,
+    json={
+        "query": query,
+        "variables": {"minProfit": 5000, "limit": 10}
+    }
+)
+
+data = response.json()
+for item in data["data"]["profitableItems"]:
+    print(f"{item['name']}: {item['profit']:,}₽ ({item['roi']:.1f}% ROI)")
+```
+
+#### Using with JavaScript
+
+```javascript
+const GRAPHQL_URL = "http://localhost:4000/graphql";
+
+async function getProfitableItems() {
+  const response = await fetch(GRAPHQL_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: `{
+        profitableItems(minProfit: 5000, limit: 10) {
+          name
+          profit
+          roi
+          fleaPrice
+          traderName
+        }
+      }`,
+    }),
+  });
+
+  const { data } = await response.json();
+  return data.profitableItems;
+}
+
+// Usage
+getProfitableItems().then((items) => {
+  items.forEach((item) => {
+    console.log(`${item.name}: ${item.profit.toLocaleString()}₽`);
+  });
+});
+```
+
+### Docker Commands
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose build --no-cache
+docker-compose up -d
+
+# View specific service logs
+docker logs tarkov-collector -f
+docker logs tarkov-dashboard -f
+docker logs tarkov-api -f
+
+# Check service health
+docker-compose ps
+```
+
+---
+
 ## ⚙️ Configuration
 
 All settings can be customized via environment variables with the `TARKOV_` prefix:

@@ -1,0 +1,79 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.code-workspace
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environment
+.venv
+venv
+env
+ENV
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+*.cover
+.hypothesis
+
+# Database files (will be mounted as volume)
+*.db
+tarkov_data.db
+test_*.db
+
+# ML model files (will be mounted as volume)
+*.pkl
+ml_model_state.pkl
+ml_learned_history.json
+
+# Log files (will be mounted as volume)
+*.log
+logs/
+
+# PID files
+*.pid
+
+# Export files
+exports/
+*.xlsx
+
+# Runtime data (generated at startup if missing)
+# Note: data/flea_level_requirements.json is needed for the app
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+*.md
+!README.md
+LICENSE
+SECURITY.md
+
+# GitHub specific
+.github
+
+# Local config
+.streamlit/secrets.toml
+
+# Build artifacts
+dist
+build
+*.egg-info
+
+# Docker files (no need to copy these into the image)
+docker-compose*.yml
+Dockerfile*

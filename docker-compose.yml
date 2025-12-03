@@ -1,0 +1,104 @@
+# Docker Compose for Tarkov Trader Profit GUI
+# Runs collector, dashboard, and GraphQL API with shared SQLite database
+
+services:
+  # =============================================================================
+  # Data Collector Service (Background)
+  # =============================================================================
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-collector
+    restart: unless-stopped
+    command: ["python", "-u", "collector.py", "--standalone"]
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+      - TARKOV_COLLECTION_INTERVAL_MINUTES=5
+      - TARKOV_DATA_RETENTION_DAYS=7
+    networks:
+      - tarkov-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/data/tarkov_data.db') else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # =============================================================================
+  # Streamlit Dashboard Service
+  # =============================================================================
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-dashboard
+    restart: unless-stopped
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    networks:
+      - tarkov-net
+    depends_on:
+      collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # GraphQL API Service
+  # =============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarkov-api
+    restart: unless-stopped
+    command: ["python", "-u", "api/server.py"]
+    ports:
+      - "4000:4000"
+    volumes:
+      - tarkov-data:/data
+    environment:
+      - TARKOV_DATA_DIR=/data
+      - API_HOST=0.0.0.0
+      - API_PORT=4000
+    networks:
+      - tarkov-net
+    depends_on:
+      collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  tarkov-data:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  tarkov-net:
+    driver: bridge
