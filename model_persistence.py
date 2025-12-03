@@ -401,12 +401,22 @@ class ModelPersistence:
             avg_profit: Average profit of all items
             accuracy: Optional accuracy metric if available
         """
+        # Sanitize inputs to prevent NaN/inf from corrupting history
+        if not isinstance(items_processed, (int, float)) or items_processed < 0:
+            items_processed = 0
+        if not isinstance(profitable_count, (int, float)) or profitable_count < 0:
+            profitable_count = 0
+        if not isinstance(avg_profit, (int, float)) or math.isnan(avg_profit) or math.isinf(avg_profit):
+            avg_profit = 0.0
+        if accuracy is not None and (not isinstance(accuracy, (int, float)) or math.isnan(accuracy) or math.isinf(accuracy)):
+            accuracy = None
+        
         session = {
             'timestamp': datetime.now().isoformat(),
-            'items_processed': items_processed,
-            'profitable_count': profitable_count,
+            'items_processed': int(items_processed),
+            'profitable_count': int(profitable_count),
             'profitable_rate': profitable_count / max(items_processed, 1),
-            'avg_profit': avg_profit,
+            'avg_profit': float(avg_profit),
             'accuracy': accuracy,
         }
         

@@ -15,6 +15,7 @@ from tempfile import NamedTemporaryFile
 
 import numpy as np
 import math
+import pandas as pd
 
 import config
 
@@ -350,7 +351,16 @@ class AlertManager:
                 offers = int(offers_raw) if offers_raw is not None else 0
             except (ValueError, TypeError):
                 offers = 0
-            is_anomaly = bool(item.get('is_anomaly', False))
+            
+            # Handle is_anomaly - can be bool, int, float (NaN), or missing
+            is_anomaly_raw = item.get('is_anomaly', False)
+            try:
+                if is_anomaly_raw is None or (isinstance(is_anomaly_raw, float) and np.isnan(is_anomaly_raw)):
+                    is_anomaly = False
+                else:
+                    is_anomaly = bool(is_anomaly_raw)
+            except (ValueError, TypeError):
+                is_anomaly = False
             
             for alert in self._alerts.values():
                 if not alert.can_trigger():

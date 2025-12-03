@@ -297,6 +297,9 @@ class DataExporter:
         """
         Export a complete market snapshot in all formats.
         
+        Generates timestamped exports of the current market state in CSV,
+        JSON, and Markdown formats for archival or analysis purposes.
+        
         Args:
             df: Full market data DataFrame.
             

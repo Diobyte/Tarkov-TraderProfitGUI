@@ -88,18 +88,19 @@ def get_flea_level_requirement(item_name: str, category: str) -> int:
     # This is more strict than full substring matching
     for locked_cat, level in config.CATEGORY_LOCKS.items():
         locked_lower = locked_cat.lower()
+        
+        # Skip cases where we shouldn't match:
+        # - Category is "Ammo pack", locked is "Ammo" -> don't match
+        # - Category is "Ammo", locked is "Ammo pack" -> don't match
+        if len(category_lower) > len(locked_lower) and category_lower.startswith(locked_lower + ' '):
+            continue
+        if len(locked_lower) > len(category_lower) and locked_lower.startswith(category_lower + ' '):
+            continue
+        
         # Check if one is the plural of the other (differs only by 's' or 'es')
         if (category_lower.rstrip('s') == locked_lower.rstrip('s') or
             category_lower.rstrip('es') == locked_lower.rstrip('es')):
             return level
-        # Check for "X" matching "X Y" pattern (e.g., "Ammo" should NOT match "Ammo pack")
-        # Only match if the category is more specific (longer) than the locked category
-        if len(category_lower) > len(locked_lower) and category_lower.startswith(locked_lower + ' '):
-            # Category is "Ammo pack", locked is "Ammo" - don't match this way
-            continue
-        if len(locked_lower) > len(category_lower) and locked_lower.startswith(category_lower + ' '):
-            # Category is "Ammo", locked is "Ammo pack" - don't match
-            continue
     
     # Default flea market unlock level
     return config.FLEA_MARKET_UNLOCK_LEVEL

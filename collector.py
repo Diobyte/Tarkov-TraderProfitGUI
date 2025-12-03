@@ -10,6 +10,7 @@ import sys
 import signal
 import argparse
 import os
+import threading
 from typing import Optional, Dict, Any, List, Tuple, NoReturn
 from types import FrameType
 import pandas as pd
@@ -72,26 +73,31 @@ if hasattr(signal, 'SIGHUP'):
 
 # Session singleton for connection reuse
 _session: Optional[requests.Session] = None
+_session_lock = threading.Lock()
 
 def get_session() -> requests.Session:
     """Get or create a session with retry configuration.
     
     Returns a singleton session to enable connection pooling and reuse.
+    Thread-safe implementation using double-check locking.
     """
     global _session
     if _session is None:
-        _session = requests.Session()
-        retry = Retry(
-            total=5,
-            connect=3,
-            read=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
-        )
-        adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
-        _session.mount('http://', adapter)
-        _session.mount('https://', adapter)
+        with _session_lock:
+            # Double-check locking
+            if _session is None:
+                _session = requests.Session()
+                retry = Retry(
+                    total=5,
+                    connect=3,
+                    read=3,
+                    backoff_factor=1,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+                )
+                adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+                _session.mount('http://', adapter)
+                _session.mount('https://', adapter)
     return _session
 
 def run_query(

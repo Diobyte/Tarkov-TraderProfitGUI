@@ -8,7 +8,6 @@ import sqlite3
 import os
 import time
 import logging
-import threading
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Any, Callable, Dict, Final
 from functools import wraps
@@ -603,14 +602,17 @@ def cleanup_old_data(days: int = 7, vacuum: bool = False) -> int:
         deleted_count = max(0, c.rowcount) if c.rowcount is not None else 0
         conn.commit()
         
-        # Only vacuum if explicitly requested and we deleted something significant
-        if vacuum and deleted_count > 1000:
+        # Only vacuum if explicitly requested and we deleted a significant number of records.
+        # VACUUM can be slow and locks the database, so only run when beneficial.
+        if vacuum and deleted_count >= 1000:
             try:
-                logging.info("Starting database VACUUM...")
+                logging.info("Starting database VACUUM after deleting %d records...", deleted_count)
                 c.execute('VACUUM')
                 logging.info("Database VACUUM completed.")
-            except sqlite3.OperationalError:
-                logging.warning("Could not VACUUM database (locked?), skipping.")
+            except sqlite3.OperationalError as e:
+                logging.warning("Could not VACUUM database (locked?): %s, skipping.", e)
+        elif vacuum and deleted_count > 0:
+            logging.debug("Skipping VACUUM - only %d records deleted (threshold: 1000)", deleted_count)
                 
         return deleted_count
     finally:
@@ -913,11 +915,11 @@ def get_database_health() -> Dict[str, Any]:
     # Determine health status
     if health['errors']:
         health['status'] = 'error'
-    elif health['data_age_hours'] > 2:
-        health['status'] = 'warning'
-        health['errors'].append("Data may be stale (>2 hours old)")
     elif health['total_records'] == 0:
         health['status'] = 'warning'
         health['errors'].append("No data in database")
+    elif health['data_age_hours'] > 2:
+        health['status'] = 'warning'
+        health['errors'].append("Data may be stale (>2 hours old)")
     
     return health

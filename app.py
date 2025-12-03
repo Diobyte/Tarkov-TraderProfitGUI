@@ -1986,17 +1986,28 @@ def render_item_detail(df: pd.DataFrame) -> None:
         df: DataFrame containing filtered market data.
     """
     if df.empty:
+        st.info("No items available for detailed analysis.")
         return
     
     st.markdown("### 🔍 Item Deep Dive")
     
+    sorted_names = df.sort_values('profit', ascending=False)['name'].tolist()
+    if not sorted_names:
+        st.info("No items to display.")
+        return
+    
     item_name = st.selectbox(
         "Select an item to analyze",
-        options=df.sort_values('profit', ascending=False)['name'].tolist(),
+        options=sorted_names,
         index=0
     )
     
-    item = df[df['name'] == item_name].iloc[0]
+    # Safely get the item, handling edge case where selection might not match
+    matching_items = df[df['name'] == item_name]
+    if matching_items.empty:
+        st.warning(f"Item '{item_name}' not found in current data.")
+        return
+    item = matching_items.iloc[0]
     
     col1, col2 = st.columns([1, 2])
     
